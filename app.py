@@ -6,6 +6,7 @@ from io import BytesIO
 import matplotlib.pyplot as plt
 import matplotlib
 import streamlit.components.v1 as components
+import re
 
 matplotlib.use('Agg')
 
@@ -30,6 +31,9 @@ def is_valid_formula(formula):
     # Check for unbalanced parentheses
     if formula.count('(') != formula.count(')'):
         return False, "Unbalanced parentheses in formula."
+    # Check for consecutive commas in function arguments
+    if re.search(r'\(\s*[^,]+?,\s*,', formula):
+        return False, "Invalid function arguments: consecutive commas detected."
     return True, ""
 
 # Function to update LaTeX from formula
@@ -41,11 +45,11 @@ def update_latex():
         st.error(error_msg)
         return
     try:
-        # Replace ^ with ** and handle function placeholders
+        # Replace ^ with ** for exponentiation
         parsed_formula = formula.replace("^", "**")
-        # Replace placeholder functions with valid SymPy syntax
-        parsed_formula = parsed_formula.replace("Integral(", "sp.Integral(1,")  # Default integrand to 1
-        parsed_formula = parsed_formula.replace("Derivative(", "sp.Derivative(1,")  # Default to 1
+        # Replace Integral and Derivative with valid SymPy syntax using regex
+        parsed_formula = re.sub(r'Integral\(([^)]+),\s*x\)', r'sp.Integral(\1, x)', parsed_formula)
+        parsed_formula = re.sub(r'Derivative\(([^)]+),\s*x\)', r'sp.Derivative(\1, x)', parsed_formula)
         expr = sp.sympify(parsed_formula, locals={"sp": sp})
         st.session_state.latex = sp.latex(expr)
     except Exception as e:
@@ -105,11 +109,11 @@ st.text_input("Enter formula (e.g., x^2 + sqrt(y))", key="formula", on_change=up
 st.write("Math tools:")
 cols = st.columns(8)
 buttons = [
-    ("√", "sqrt()"),  # Auto-close parentheses
+    ("√", "sqrt()"),
     ("÷", "/"),
-    ("∫", "Integral(1, x)"),  # Include default integrand
-    ("d/dx", "Derivative(1, x)"),  # Include default integrand
-    ("log", "log()"),  # Auto-close parentheses
+    ("∫", "Integral(1, x)"),
+    ("d/dx", "Derivative(1, x)"),
+    ("log", "log()"),
     ("×", "*"),
     ("^", "^"),
     ("_", "_")
