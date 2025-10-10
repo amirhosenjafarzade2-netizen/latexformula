@@ -24,7 +24,7 @@ def is_valid_formula(formula):
     if formula.strip()[-1] in ['+', '-', '*', '/', '^', '_']:
         return False, "Formula ends with an incomplete operator."
     # Check for incomplete function calls (e.g., 'sqrt(', 'Integral(')
-    incomplete_functions = ['sqrt(', 'log(', 'sin(', 'cos(', 'tan(', 'exp(', 'Integral(', 'Derivative(']
+    incomplete_functions = ['sqrt(', 'log(', 'Integral(', 'Derivative(']
     for func in incomplete_functions:
         if formula.strip().endswith(func):
             return False, f"Incomplete function call: '{func}' is missing arguments."
@@ -54,12 +54,8 @@ def update_latex():
         # Replace ^ with ** for exponentiation
         parsed_formula = formula.replace("^", "**")
         
-        # Replace log with sp.log and other trig functions
+        # Replace log with sp.log
         parsed_formula = re.sub(r'\blog\(', 'sp.log(', parsed_formula)
-        parsed_formula = re.sub(r'\bsin\(', 'sp.sin(', parsed_formula)
-        parsed_formula = re.sub(r'\bcos\(', 'sp.cos(', parsed_formula)
-        parsed_formula = re.sub(r'\btan\(', 'sp.tan(', parsed_formula)
-        parsed_formula = re.sub(r'\bexp\(', 'sp.exp(', parsed_formula)
         
         # Replace Integral with valid SymPy syntax, auto-insert '1' if integrand is empty or whitespace
         parsed_formula = re.sub(r'Integral\(\s*([^,)]*?)\s*,\s*x\s*\)', 
@@ -78,9 +74,7 @@ def update_latex():
             "sin": sp.sin,
             "cos": sp.cos,
             "tan": sp.tan,
-            "exp": sp.exp,
-            "pi": sp.pi,
-            "e": sp.E
+            "exp": sp.exp
         }
         expr = sp.sympify(parsed_formula, locals=local_dict)
         # Use latex with order='none' to preserve input order
@@ -153,18 +147,20 @@ cols = st.columns(8)
 buttons = [
     ("√", "sqrt()"),
     ("÷", "/"),
-    ("∫", "Integral(, x)"),
-    ("d/dx", "Derivative(, x)"),
+    ("∫", "Integral(1, x)"),
+    ("d/dx", "Derivative(1, x)"),
     ("log", "log()"),
-    ("sin", "sin()"),
-    ("cos", "cos()"),
     ("×", "*"),
     ("^", "^"),
-    ("π", "pi"),
+    ("_", "_")
 ]
 
-# Adjust columns for the new button count
-cols = st.columns(10)
+for i, (label, text) in enumerate(buttons):
+    with cols[i]:
+        st.button(label, on_click=partial(append_to_formula, text))
+
+# Second entry bar: LaTeX version (editable)
+st.text_input("LaTeX version", key="latex")
 
 # Render the LaTeX and copy buttons
 st.write("Rendered:")
