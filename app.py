@@ -102,42 +102,62 @@ async function copyAsImage() {
     const latexCode = document.getElementById('latex-content').innerText;
     
     try {
+        button.innerText = 'Rendering...';
+        
         // Create temporary div with rendered math
         const tempDiv = document.createElement('div');
         tempDiv.style.position = 'absolute';
         tempDiv.style.left = '-9999px';
-        tempDiv.style.fontSize = '24px';
-        tempDiv.style.padding = '20px';
+        tempDiv.style.fontSize = '32px';
+        tempDiv.style.padding = '30px';
         tempDiv.style.backgroundColor = 'white';
-        tempDiv.innerHTML = `$$${latexCode}$$`;
+        tempDiv.style.color = 'black';
+        tempDiv.innerHTML = `\\[${latexCode}\\]`;
         document.body.appendChild(tempDiv);
         
-        // Wait for MathJax to render
+        // Wait for MathJax to render - give it more time
+        await new Promise(resolve => setTimeout(resolve, 100));
         await MathJax.typesetPromise([tempDiv]);
+        await new Promise(resolve => setTimeout(resolve, 200));
         
-        // Convert to canvas
+        // Convert to canvas with higher quality
         const canvas = await html2canvas(tempDiv, {
             backgroundColor: 'white',
-            scale: 3
+            scale: 4,
+            logging: false,
+            useCORS: true
         });
         
-        // Convert canvas to blob
+        // Convert canvas to blob and copy
         canvas.toBlob(async (blob) => {
-            const item = new ClipboardItem({ 'image/png': blob });
-            await navigator.clipboard.write([item]);
-            
-            document.body.removeChild(tempDiv);
-            
-            button.style.backgroundColor = '#00ff00';
-            button.innerText = '✓ Copied!';
-            setTimeout(() => {
-                button.style.backgroundColor = '#0f80c1';
-                button.innerText = 'Copy as Image';
-            }, 1500);
-        });
+            try {
+                const item = new ClipboardItem({ 'image/png': blob });
+                await navigator.clipboard.write([item]);
+                
+                document.body.removeChild(tempDiv);
+                
+                button.style.backgroundColor = '#00ff00';
+                button.innerText = '✓ Copied!';
+                setTimeout(() => {
+                    button.style.backgroundColor = '#0f80c1';
+                    button.innerText = 'Copy as Image';
+                }, 1500);
+            } catch (clipErr) {
+                console.error('Clipboard error:', clipErr);
+                document.body.removeChild(tempDiv);
+                button.style.backgroundColor = '#ff0000';
+                button.innerText = 'Failed';
+                setTimeout(() => {
+                    button.style.backgroundColor = '#0f80c1';
+                    button.innerText = 'Copy as Image';
+                }, 1500);
+            }
+        }, 'image/png');
+        
     } catch (err) {
         console.error('Failed to copy:', err);
-        if (tempDiv.parentNode) document.body.removeChild(tempDiv);
+        const tempDiv = document.querySelector('div[style*="left: -9999px"]');
+        if (tempDiv && tempDiv.parentNode) document.body.removeChild(tempDiv);
         button.style.backgroundColor = '#ff0000';
         button.innerText = 'Failed';
         setTimeout(() => {
