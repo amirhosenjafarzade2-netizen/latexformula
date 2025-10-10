@@ -27,18 +27,23 @@ def update_latex():
         st.session_state.latex = f"Invalid formula: {str(e)}"
         st.error(f"Invalid formula: {str(e)}")
 
-# Function to create image from LaTeX with tight width
+# Function to create image from LaTeX with proportional size
 def latex_to_image(latex_str):
     try:
-        # Adjust figure size to be narrow, height sufficient for formula
-        fig = plt.figure(figsize=(4, 1))  # Reduced width for tighter fit
+        # Estimate formula width based on character count (approximate)
+        formula_length = len(latex_str)
+        # Base width: 0.2 inches per character, minimum 1 inch, max 5 inches
+        width = max(1, min(5, formula_length * 0.2))
+        # Height proportional to width, adjusted for typical formula height
+        height = max(0.8, width * 0.3)
+        fig = plt.figure(figsize=(width, height))
         fig.patch.set_facecolor('white')
         ax = fig.add_axes([0, 0, 1, 1])
         ax.axis('off')
-        ax.text(0.5, 0.5, f'${latex_str}$', fontsize=20, ha='center', va='center')
+        ax.text(0.5, 0.5, f'${latex_str}$', fontsize=16, ha='center', va='center')
         
         buf = BytesIO()
-        plt.savefig(buf, format='png', dpi=300, bbox_inches='tight', pad_inches=0.1, facecolor='white')  # Minimal padding
+        plt.savefig(buf, format='png', dpi=300, bbox_inches='tight', pad_inches=0.05, facecolor='white')
         plt.close(fig)
         buf.seek(0)
         
@@ -192,19 +197,19 @@ if st.session_state.latex and not st.session_state.latex.startswith("Invalid for
             """
         
         html_content += """
-        <div style="display: flex; gap: 10px; margin-top: 10px;">
+        <div style="display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px;">
             <button id="copy-latex-btn" onclick="copyLatexText()" 
-                    style="background-color: #0f80c1; color: white; padding: 10px 20px; 
+                    style="background-color: #0f80c1; color: white; padding: 8px 16px; 
                            border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">
                 Copy LaTeX
             </button>
             <button id="copy-word-btn" onclick="copyForWord()" 
-                    style="background-color: #0f80c1; color: white; padding: 10px 20px; 
+                    style="background-color: #0f80c1; color: white; padding: 8px 16px; 
                            border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">
                 Copy for Word
             </button>
             <button id="copy-image-btn" onclick="copyAsImage()" 
-                    style="background-color: #0f80c1; color: white; padding: 10px 20px; 
+                    style="background-color: #0f80c1; color: white; padding: 8px 16px; 
                            border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">
                 Copy as Image
             </button>
@@ -216,7 +221,7 @@ if st.session_state.latex and not st.session_state.latex.startswith("Invalid for
         </p>
         """
         
-        components.html(html_content, height=250)
+        components.html(html_content, height=300)  # Increased height to ensure buttons are visible
         
     except Exception as e:
         st.error(f"Unable to render LaTeX: {str(e)}")
