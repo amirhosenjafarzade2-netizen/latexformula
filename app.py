@@ -37,6 +37,9 @@ def is_valid_formula(formula):
     # Check for empty function arguments (e.g., 'Integral(, x)')
     if re.search(r'\(\s*,', formula):
         return False, "Invalid function arguments: empty argument detected."
+    # Check for incomplete Integral or Derivative (missing integrand/function)
+    if re.search(r'(Integral|Derivative)\(\s*,', formula):
+        return False, "Integral/Derivative is missing the function to integrate/differentiate."
     return True, ""
 
 # Function to update LaTeX from formula
@@ -50,12 +53,12 @@ def update_latex():
     try:
         # Replace ^ with ** for exponentiation
         parsed_formula = formula.replace("^", "**")
-        # Replace Integral with valid SymPy syntax, auto-insert '1' if integrand is empty
-        parsed_formula = re.sub(r'Integral\(\s*([^,]*?)\s*,\s*x\s*\)', 
+        # Replace Integral with valid SymPy syntax, auto-insert '1' if integrand is empty or whitespace
+        parsed_formula = re.sub(r'Integral\(\s*([^,)]*?)\s*,\s*x\s*\)', 
                                 lambda m: 'sp.Integral(' + (m.group(1).strip() if m.group(1).strip() else '1') + ', x)', 
                                 parsed_formula)
         # Same for Derivative
-        parsed_formula = re.sub(r'Derivative\(\s*([^,]*?)\s*,\s*x\s*\)', 
+        parsed_formula = re.sub(r'Derivative\(\s*([^,)]*?)\s*,\s*x\s*\)', 
                                 lambda m: 'sp.Derivative(' + (m.group(1).strip() if m.group(1).strip() else '1') + ', x)', 
                                 parsed_formula)
         expr = sp.sympify(parsed_formula, locals={"sp": sp})
