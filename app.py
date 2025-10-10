@@ -77,7 +77,8 @@ def update_latex():
             "exp": sp.exp
         }
         expr = sp.sympify(parsed_formula, locals=local_dict)
-        st.session_state.latex = sp.latex(expr)
+        # Use latex with order='none' to preserve input order and fold_frac_powers=False for derivative notation
+        st.session_state.latex = sp.latex(expr, order='none', fold_frac_powers=False)
     except Exception as e:
         error_msg = f"Invalid formula: {str(e)}"
         st.session_state.latex = error_msg
