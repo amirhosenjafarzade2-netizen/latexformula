@@ -1,5 +1,3 @@
-# Streamlit app to convert math formulas to LaTeX, with 3 copy options
-# Run with: streamlit run app.py
 import streamlit as st
 import sympy as sp
 from functools import partial
@@ -24,6 +22,14 @@ def is_valid_formula(formula):
     # Check for trailing operators
     if formula.strip()[-1] in ['+', '-', '*', '/', '^', '_']:
         return False, "Formula ends with an incomplete operator."
+    # Check for incomplete function calls (e.g., 'sqrt(', 'Integral(')
+    incomplete_functions = ['sqrt(', 'log(', 'Integral(', 'Derivative(']
+    for func in incomplete_functions:
+        if formula.strip().endswith(func):
+            return False, f"Incomplete function call: '{func}' is missing arguments."
+    # Check for unbalanced parentheses
+    if formula.count('(') != formula.count(')'):
+        return False, "Unbalanced parentheses in formula."
     return True, ""
 
 # Function to update LaTeX from formula
@@ -35,8 +41,12 @@ def update_latex():
         st.error(error_msg)
         return
     try:
+        # Replace ^ with ** and handle function placeholders
         parsed_formula = formula.replace("^", "**")
-        expr = sp.sympify(parsed_formula)
+        # Replace placeholder functions with valid SymPy syntax
+        parsed_formula = parsed_formula.replace("Integral(", "sp.Integral(1,")  # Default integrand to 1
+        parsed_formula = parsed_formula.replace("Derivative(", "sp.Derivative(1,")  # Default to 1
+        expr = sp.sympify(parsed_formula, locals={"sp": sp})
         st.session_state.latex = sp.latex(expr)
     except Exception as e:
         error_msg = f"Invalid formula: {str(e)}"
@@ -95,11 +105,11 @@ st.text_input("Enter formula (e.g., x^2 + sqrt(y))", key="formula", on_change=up
 st.write("Math tools:")
 cols = st.columns(8)
 buttons = [
-    ("√", "sqrt("),
+    ("√", "sqrt()"),  # Auto-close parentheses
     ("÷", "/"),
-    ("∫", "Integral(, x)"),
-    ("d/dx", "Derivative(, x)"),
-    ("log", "log("),
+    ("∫", "Integral(1, x)"),  # Include default integrand
+    ("d/dx", "Derivative(1, x)"),  # Include default integrand
+    ("log", "log()"),  # Auto-close parentheses
     ("×", "*"),
     ("^", "^"),
     ("_", "_")
