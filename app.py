@@ -1,4 +1,4 @@
-# Streamlit app to convert math formulas to LaTeX, using JavaScript for clipboard copy
+# Streamlit app to convert math formulas to LaTeX, with JavaScript for copying rendered LaTeX
 # Run with: streamlit run app.py
 
 import streamlit as st
@@ -30,9 +30,10 @@ def append_to_formula(text):
 # JavaScript for copying text to clipboard
 copy_js = """
 <script>
-function copyToClipboard(text) {
+function copyToClipboard() {
+    const text = document.getElementById('latex-content').innerText;
     navigator.clipboard.writeText(text).then(function() {
-        alert('Copied to clipboard!');
+        alert('LaTeX copied to clipboard!');
     }, function(err) {
         alert('Failed to copy: ' + err);
     });
@@ -68,15 +69,15 @@ for i, (label, text) in enumerate(buttons):
 # Second entry bar: LaTeX version (editable)
 st.text_input("LaTeX version", key="latex")
 
-# Copy button using JavaScript
-components.html(f"""
-{copy_js}
-<button onclick="copyToClipboard('{st.session_state.latex}')">Copy LaTeX</button>
-""")
-
 # Render the LaTeX
 st.write("Rendered:")
 try:
     st.latex(st.session_state.latex)
+    # Hidden div to store LaTeX code for copying
+    components.html(f"""
+    {copy_js}
+    <div id="latex-content" style="display: none;">{st.session_state.latex}</div>
+    <button onclick="copyToClipboard()">Copy LaTeX</button>
+    """)
 except:
     st.write("Unable to render LaTeX.")
