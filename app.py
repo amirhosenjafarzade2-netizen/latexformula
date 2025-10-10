@@ -1,11 +1,10 @@
-# This Streamlit app converts a simple math formula to LaTeX.
-# Requires: pip install streamlit sympy pyperclip
-# Run with: streamlit run this_file.py
+# Streamlit app to convert math formulas to LaTeX, using JavaScript for clipboard copy
+# Run with: streamlit run app.py
 
 import streamlit as st
 import sympy as sp
 from functools import partial
-import pyperclip
+import streamlit.components.v1 as components
 
 # Initialize session state
 if "formula" not in st.session_state:
@@ -17,7 +16,6 @@ if "latex" not in st.session_state:
 # Function to update LaTeX from formula
 def update_latex():
     try:
-        # Replace ^ with ** for sympy parsing
         parsed_formula = st.session_state.formula.replace("^", "**")
         expr = sp.sympify(parsed_formula)
         st.session_state.latex = sp.latex(expr)
@@ -28,6 +26,19 @@ def update_latex():
 def append_to_formula(text):
     st.session_state.formula += text
     update_latex()
+
+# JavaScript for copying text to clipboard
+copy_js = """
+<script>
+function copyToClipboard(text) {
+    navigator.clipboard.writeText(text).then(function() {
+        alert('Copied to clipboard!');
+    }, function(err) {
+        alert('Failed to copy: ' + err);
+    });
+}
+</script>
+"""
 
 # UI
 st.title("Formula to LaTeX Converter")
@@ -57,10 +68,11 @@ for i, (label, text) in enumerate(buttons):
 # Second entry bar: LaTeX version (editable)
 st.text_input("LaTeX version", key="latex")
 
-# Copy button
-if st.button("Copy LaTeX"):
-    pyperclip.copy(st.session_state.latex)
-    st.success("LaTeX copied to clipboard!")
+# Copy button using JavaScript
+components.html(f"""
+{copy_js}
+<button onclick="copyToClipboard('{st.session_state.latex}')">Copy LaTeX</button>
+""")
 
 # Render the LaTeX
 st.write("Rendered:")
