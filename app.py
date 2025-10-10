@@ -1,6 +1,5 @@
 import streamlit as st
 import sympy as sp
-import numpy as np
 from functools import partial
 import base64
 from io import BytesIO
@@ -131,21 +130,6 @@ def latex_to_image(latex_str):
     except Exception as e:
         st.error(f"Image generation error: {str(e)}")
         return None
-
-# Function to plot shear stress vs. shear rate (Herschel-Bulkley model)
-def plot_shear_stress():
-    try:
-        shear_rate = np.linspace(0, 100, 100)  # Shear rate (γ̇) in s⁻¹
-        tau_0, K, n = 10, 0.5, 0.8  # Example parameters
-        shear_stress = tau_0 + K * shear_rate**n
-        fig, ax = plt.subplots()
-        ax.plot(shear_rate, shear_stress, label=r'$\tau = \tau_0 + K \dot{\gamma}^n$')
-        ax.set_xlabel(r'Shear Rate ($\dot{\gamma}$, s$^{-1}$)')
-        ax.set_ylabel(r'Shear Stress ($\tau$, Pa)')
-        ax.legend()
-        st.pyplot(fig)
-    except Exception as e:
-        st.error(f"Plotting error: {str(e)}")
 
 # Function to append text to formula and update LaTeX
 def append_to_formula(text):
@@ -335,8 +319,3 @@ if st.session_state.latex and not st.session_state.latex.startswith("Invalid for
         st.error(f"Unable to render LaTeX: {str(e)}")
 else:
     st.write("Enter a valid formula to see the LaTeX rendering.")
-
-# Shear stress vs. shear rate plot
-st.subheader("Shear Stress vs. Shear Rate (Herschel-Bulkley Model)")
-if st.button("Generate Shear Stress Plot"):
-    plot_shear_stress()
