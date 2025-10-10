@@ -27,17 +27,18 @@ def update_latex():
         st.session_state.latex = f"Invalid formula: {str(e)}"
         st.error(f"Invalid formula: {str(e)}")
 
-# Function to create image from LaTeX
+# Function to create image from LaTeX with tight width
 def latex_to_image(latex_str):
     try:
-        fig = plt.figure(figsize=(10, 2))
+        # Adjust figure size to be narrow, height sufficient for formula
+        fig = plt.figure(figsize=(4, 1))  # Reduced width for tighter fit
         fig.patch.set_facecolor('white')
         ax = fig.add_axes([0, 0, 1, 1])
         ax.axis('off')
-        ax.text(0.5, 0.5, f'${latex_str}$', fontsize=24, ha='center', va='center')
+        ax.text(0.5, 0.5, f'${latex_str}$', fontsize=20, ha='center', va='center')
         
         buf = BytesIO()
-        plt.savefig(buf, format='png', dpi=300, bbox_inches='tight', pad_inches=0.3, facecolor='white')
+        plt.savefig(buf, format='png', dpi=300, bbox_inches='tight', pad_inches=0.1, facecolor='white')  # Minimal padding
         plt.close(fig)
         buf.seek(0)
         
@@ -81,15 +82,16 @@ st.text_input("LaTeX version", key="latex")
 
 # Render the LaTeX and copy buttons
 st.write("Rendered:")
-if st.session_state.latex:
+if st.session_state.latex and not st.session_state.latex.startswith("Invalid formula"):
     try:
         st.latex(st.session_state.latex)
         
         # Generate image version
-        img_b64 = latex_to_image(st.session_state.latex) if st.session_state.latex else None
+        img_b64 = latex_to_image(st.session_state.latex)
         
         # JavaScript for clipboard operations
         copy_js = """
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/3.2.2/es5/tex-mml-chtml.min.js"></script>
         <script>
         function copyLatexText() {
             const button = document.getElementById('copy-latex-btn');
@@ -116,7 +118,8 @@ if st.session_state.latex:
             const button = document.getElementById('copy-word-btn');
             const latexCode = document.getElementById('latex-content').innerText;
             try {
-                const htmlContent = `<span style="font-family: 'Cambria Math', 'Times New Roman'; font-size: 14pt;">$${latexCode}$</span>`;
+                const mathml = await MathJax.tex2mmlPromise(latexCode);
+                const htmlContent = `<!DOCTYPE html><html><body>${mathml}</body></html>`;
                 const blob = new Blob([htmlContent], { type: 'text/html' });
                 const clipboardItem = new ClipboardItem({ 'text/html': blob });
                 await navigator.clipboard.write([clipboardItem]);
@@ -208,7 +211,7 @@ if st.session_state.latex:
         </div>
         <p style="font-size: 12px; color: #666; margin-top: 10px;">
             • <strong>Copy LaTeX</strong>: Copies the LaTeX code as text<br>
-            • <strong>Copy for Word</strong>: Copies formatted text (paste into Word equation editor)<br>
+            • <strong>Copy for Word</strong>: Copies MathML for direct pasting into Word<br>
             • <strong>Copy as Image</strong>: Copies as PNG image (works in most applications)
         </p>
         """
@@ -218,4 +221,4 @@ if st.session_state.latex:
     except Exception as e:
         st.error(f"Unable to render LaTeX: {str(e)}")
 else:
-    st.write("Enter a formula to see the LaTeX rendering.")
+    st.write("Enter a valid formula to see the LaTeX rendering.")
