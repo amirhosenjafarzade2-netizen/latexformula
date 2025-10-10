@@ -27,19 +27,32 @@ def append_to_formula(text):
     st.session_state.formula += text
     update_latex()
 
-# JavaScript for copying text to clipboard
+# JavaScript for copying text to clipboard with button color change
 copy_js = """
 <script>
 function copyToClipboard() {
     const text = document.getElementById('latex-content').innerText;
     navigator.clipboard.writeText(text).then(function() {
-        alert('LaTeX copied to clipboard!');
+        const button = document.getElementById('copy-button');
+        button.style.backgroundColor = '#00ff00'; // Green on success
+        setTimeout(() => {
+            button.style.backgroundColor = '#0f80c1'; // Revert to Streamlit blue
+        }, 1000);
     }, function(err) {
-        alert('Failed to copy: ' + err);
+        console.error('Failed to copy: ', err);
     });
 }
 </script>
 """
+
+# Function to handle copy button click
+def handle_copy():
+    # Ensure the latest LaTeX is available for copying
+    st.session_state.copy_triggered = True
+
+# Initialize copy trigger
+if "copy_triggered" not in st.session_state:
+    st.session_state.copy_triggered = False
 
 # UI
 st.title("Formula to LaTeX Converter")
@@ -77,7 +90,7 @@ try:
     components.html(f"""
     {copy_js}
     <div id="latex-content" style="display: none;">{st.session_state.latex}</div>
-    <button onclick="copyToClipboard()">Copy LaTeX</button>
-    """)
+    <button id="copy-button" onclick="copyToClipboard()" style="background-color: #0f80c1; color: white; padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer;">Copy LaTeX</button>
+    """, height=50)
 except:
     st.write("Unable to render LaTeX.")
