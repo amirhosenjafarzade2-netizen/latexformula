@@ -1,10 +1,11 @@
+# Streamlit app to convert math formulas to LaTeX, with 3 copy options
+# Run with: streamlit run app.py
 import streamlit as st
 import sympy as sp
 from functools import partial
-import streamlit.components.v1 as components
+import pyperclip
 import base64
 from io import BytesIO
-from PIL import Image, ImageDraw, ImageFont
 import matplotlib.pyplot as plt
 import matplotlib
 
@@ -23,7 +24,8 @@ def update_latex():
         expr = sp.sympify(parsed_formula)
         st.session_state.latex = sp.latex(expr)
     except Exception as e:
-        st.session_state.latex = "Invalid formula"
+        st.session_state.latex = f"Invalid formula: {str(e)}"
+        st.error(f"Invalid formula: {str(e)}")
 
 # Function to create image from LaTeX
 def latex_to_image(latex_str):
@@ -41,7 +43,8 @@ def latex_to_image(latex_str):
         
         img_b64 = base64.b64encode(buf.read()).decode()
         return img_b64
-    except:
+    except Exception as e:
+        st.error(f"Image generation error: {str(e)}")
         return None
 
 # Function to append text to formula and update LaTeX
@@ -76,152 +79,52 @@ for i, (label, text) in enumerate(buttons):
 # Second entry bar: LaTeX version (editable)
 st.text_input("LaTeX version", key="latex")
 
-# Render the LaTeX
+# Render the LaTeX and copy buttons
 st.write("Rendered:")
-try:
-    st.latex(st.session_state.latex)
-    
-    # Generate image version
-    img_b64 = latex_to_image(st.session_state.latex) if st.session_state.latex else None
-    
-    # JavaScript with copy functions
-    copy_js = f"""
-    <script>
-    // Function 1: Copy LaTeX code as text
-    function copyLatexText() {{
-        const button = document.getElementById('copy-latex-btn');
-        const latexCode = document.getElementById('latex-content').innerText;
+if st.session_state.latex:
+    try:
+        st.latex(st.session_state.latex)
         
-        navigator.clipboard.writeText(latexCode).then(function() {{
-            button.style.backgroundColor = '#00ff00';
-            button.innerText = '✓ Copied!';
-            setTimeout(() => {{
-                button.style.backgroundColor = '#0f80c1';
-                button.innerText = 'Copy LaTeX';
-            }}, 1500);
-        }}, function(err) {{
-            console.error('Failed to copy:', err);
-            button.style.backgroundColor = '#ff0000';
-            button.innerText = 'Failed';
-            setTimeout(() => {{
-                button.style.backgroundColor = '#0f80c1';
-                button.innerText = 'Copy LaTeX';
-            }}, 1500);
-        }});
-    }}
-
-    // Function 2: Copy as text for Word (Word can parse LaTeX in some contexts)
-    async function copyForWord() {{
-        const button = document.getElementById('copy-word-btn');
-        const latexCode = document.getElementById('latex-content').innerText;
+        # Generate image version
+        img_b64 = latex_to_image(st.session_state.latex) if st.session_state.latex else None
         
-        try {{
-            // Create a simple HTML representation
-            const htmlContent = `<span style="font-family: 'Cambria Math', 'Times New Roman'; font-size: 14pt;">$${latexCode}$</span>`;
-            
-            const blob = new Blob([htmlContent], {{ type: 'text/html' }});
-            const clipboardItem = new ClipboardItem({{ 'text/html': blob }});
-            
-            await navigator.clipboard.write([clipboardItem]);
-            
-            button.style.backgroundColor = '#00ff00';
-            button.innerText = '✓ Copied!';
-            setTimeout(() => {{
-                button.style.backgroundColor = '#0f80c1';
-                button.innerText = 'Copy for Word';
-            }}, 1500);
-        }} catch (err) {{
-            console.error('Failed to copy:', err);
-            button.style.backgroundColor = '#ff0000';
-            button.innerText = 'Failed';
-            setTimeout(() => {{
-                button.style.backgroundColor = '#0f80c1';
-                button.innerText = 'Copy for Word';
-            }}, 1500);
-        }}
-    }}
-
-    // Function 3: Copy as Image
-    async function copyAsImage() {{
-        const button = document.getElementById('copy-image-btn');
-        const imgElement = document.getElementById('latex-image');
+        # Copy buttons
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            if st.button("Copy LaTeX", key="copy_latex"):
+                try:
+                    pyperclip.copy(st.session_state.latex)
+                    st.success("LaTeX code copied to clipboard!")
+                except Exception as e:
+                    st.error(f"Failed to copy LaTeX: {str(e)}")
+        with col2:
+            if st.button("Copy for Word", key="copy_word"):
+                try:
+                    html_content = f'<span style="font-family: \'Cambria Math\', \'Times New Roman\'; font-size: 14pt;">${st.session_state.latex}$</span>'
+                    pyperclip.copy(html_content)
+                    st.success("Copied for Word (paste into Word equation editor)!")
+                except Exception as e:
+                    st.error(f"Failed to copy for Word: {str(e)}")
+        with col3:
+            if st.button("Copy as Image", key="copy_image"):
+                if img_b64:
+                    st.image(f"data:image/png;base64,{img_b64}")
+                    st.info("Image displayed above. Right-click to copy or save.")
+                else:
+                    st.error("No image available to copy.")
         
-        if (!imgElement) {{
-            button.style.backgroundColor = '#ff0000';
-            button.innerText = 'No Image';
-            setTimeout(() => {{
-                button.style.backgroundColor = '#0f80c1';
-                button.innerText = 'Copy as Image';
-            }}, 1500);
-            return;
-        }}
+        # Display image if generated
+        if img_b64:
+            st.image(f"data:image/png;base64,{img_b64}", caption="Rendered formula as image")
         
-        try {{
-            button.innerText = 'Copying...';
-            
-            // Fetch the image as blob
-            const response = await fetch(imgElement.src);
-            const blob = await response.blob();
-            
-            // Copy to clipboard
-            const clipboardItem = new ClipboardItem({{ 'image/png': blob }});
-            await navigator.clipboard.write([clipboardItem]);
-            
-            button.style.backgroundColor = '#00ff00';
-            button.innerText = '✓ Copied!';
-            setTimeout(() => {{
-                button.style.backgroundColor = '#0f80c1';
-                button.innerText = 'Copy as Image';
-            }}, 1500);
-        }} catch (err) {{
-            console.error('Failed to copy:', err);
-            button.style.backgroundColor = '#ff0000';
-            button.innerText = 'Failed';
-            setTimeout(() => {{
-                button.style.backgroundColor = '#0f80c1';
-                button.innerText = 'Copy as Image';
-            }}, 1500);
-        }}
-    }}
-    </script>
-    """
-    
-    html_content = f"""
-    {copy_js}
-    <div id="latex-content" style="display: none;">{st.session_state.latex}</div>
-    """
-    
-    if img_b64:
-        html_content += f"""
-        <img id="latex-image" src="data:image/png;base64,{img_b64}" style="display: none;" />
-        """
-    
-    html_content += """
-    <div style="display: flex; gap: 10px; margin-top: 10px;">
-        <button id="copy-latex-btn" onclick="copyLatexText()" 
-                style="background-color: #0f80c1; color: white; padding: 10px 20px; 
-                       border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">
-            Copy LaTeX
-        </button>
-        <button id="copy-word-btn" onclick="copyForWord()" 
-                style="background-color: #0f80c1; color: white; padding: 10px 20px; 
-                       border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">
-            Copy for Word
-        </button>
-        <button id="copy-image-btn" onclick="copyAsImage()" 
-                style="background-color: #0f80c1; color: white; padding: 10px 20px; 
-                       border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">
-            Copy as Image
-        </button>
-    </div>
-    <p style="font-size: 12px; color: #666; margin-top: 10px;">
-        • <strong>Copy LaTeX</strong>: Copies the LaTeX code as text<br>
-        • <strong>Copy for Word</strong>: Copies formatted text (paste into Word equation editor)<br>
-        • <strong>Copy as Image</strong>: Copies as PNG image (works anywhere)
-    </p>
-    """
-    
-    components.html(html_content, height=150)
-    
-except Exception as e:
-    st.write(f"Unable to render LaTeX: {e}")
+        # Instructions
+        st.markdown("""
+        - **Copy LaTeX**: Copies the LaTeX code as text
+        - **Copy for Word**: Copies formatted text (paste into Word equation editor)
+        - **Copy as Image**: Displays the image (right-click to copy or save)
+        """)
+        
+    except Exception as e:
+        st.error(f"Unable to render LaTeX: {str(e)}")
+else:
+    st.write("Enter a formula to see the LaTeX rendering.")
