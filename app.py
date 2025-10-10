@@ -17,15 +17,31 @@ if "formula" not in st.session_state:
 if "latex" not in st.session_state:
     st.session_state.latex = ""
 
+# Function to validate formula
+def is_valid_formula(formula):
+    if not formula.strip():
+        return False, "Formula is empty."
+    # Check for trailing operators
+    if formula.strip()[-1] in ['+', '-', '*', '/', '^', '_']:
+        return False, "Formula ends with an incomplete operator."
+    return True, ""
+
 # Function to update LaTeX from formula
 def update_latex():
+    formula = st.session_state.formula
+    valid, error_msg = is_valid_formula(formula)
+    if not valid:
+        st.session_state.latex = f"Invalid formula: {error_msg}"
+        st.error(error_msg)
+        return
     try:
-        parsed_formula = st.session_state.formula.replace("^", "**")
+        parsed_formula = formula.replace("^", "**")
         expr = sp.sympify(parsed_formula)
         st.session_state.latex = sp.latex(expr)
     except Exception as e:
-        st.session_state.latex = f"Invalid formula: {str(e)}"
-        st.error(f"Invalid formula: {str(e)}")
+        error_msg = f"Invalid formula: {str(e)}"
+        st.session_state.latex = error_msg
+        st.error(error_msg)
 
 # Function to create image from LaTeX with proportional width
 def latex_to_image(latex_str):
@@ -43,7 +59,7 @@ def latex_to_image(latex_str):
         plt.close(temp_fig)
         
         # Calculate proportional figure size with slight padding
-        width = bbox_inches.width + 0.3  # Small padding around formula
+        width = bbox_inches.width + 0.3
         height = bbox_inches.height + 0.2
         
         # Create final figure with calculated size
