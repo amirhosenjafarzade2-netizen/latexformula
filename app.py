@@ -32,8 +32,11 @@ def is_valid_formula(formula):
     if formula.count('(') != formula.count(')'):
         return False, "Unbalanced parentheses in formula."
     # Check for consecutive commas in function arguments
-    if re.search(r'\(\s*[^,]+?,\s*,', formula):
+    if re.search(r',\s*,', formula):
         return False, "Invalid function arguments: consecutive commas detected."
+    # Check for empty function arguments (e.g., 'Integral(, x)')
+    if re.search(r'\(\s*,', formula):
+        return False, "Invalid function arguments: empty argument detected."
     return True, ""
 
 # Function to update LaTeX from formula
@@ -47,9 +50,14 @@ def update_latex():
     try:
         # Replace ^ with ** for exponentiation
         parsed_formula = formula.replace("^", "**")
-        # Replace Integral and Derivative with valid SymPy syntax using regex
-        parsed_formula = re.sub(r'Integral\(([^)]+),\s*x\)', r'sp.Integral(\1, x)', parsed_formula)
-        parsed_formula = re.sub(r'Derivative\(([^)]+),\s*x\)', r'sp.Derivative(\1, x)', parsed_formula)
+        # Replace Integral with valid SymPy syntax, auto-insert '1' if integrand is empty
+        parsed_formula = re.sub(r'Integral\(\s*([^,]*?)\s*,\s*x\s*\)', 
+                                lambda m: 'sp.Integral(' + (m.group(1).strip() if m.group(1).strip() else '1') + ', x)', 
+                                parsed_formula)
+        # Same for Derivative
+        parsed_formula = re.sub(r'Derivative\(\s*([^,]*?)\s*,\s*x\s*\)', 
+                                lambda m: 'sp.Derivative(' + (m.group(1).strip() if m.group(1).strip() else '1') + ', x)', 
+                                parsed_formula)
         expr = sp.sympify(parsed_formula, locals={"sp": sp})
         st.session_state.latex = sp.latex(expr)
     except Exception as e:
