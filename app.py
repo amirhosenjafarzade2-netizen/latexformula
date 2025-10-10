@@ -53,6 +53,10 @@ def update_latex():
     try:
         # Replace ^ with ** for exponentiation
         parsed_formula = formula.replace("^", "**")
+        
+        # Replace log with sp.log
+        parsed_formula = re.sub(r'\blog\(', 'sp.log(', parsed_formula)
+        
         # Replace Integral with valid SymPy syntax, auto-insert '1' if integrand is empty or whitespace
         parsed_formula = re.sub(r'Integral\(\s*([^,)]*?)\s*,\s*x\s*\)', 
                                 lambda m: 'sp.Integral(' + (m.group(1).strip() if m.group(1).strip() else '1') + ', x)', 
@@ -61,7 +65,18 @@ def update_latex():
         parsed_formula = re.sub(r'Derivative\(\s*([^,)]*?)\s*,\s*x\s*\)', 
                                 lambda m: 'sp.Derivative(' + (m.group(1).strip() if m.group(1).strip() else '1') + ', x)', 
                                 parsed_formula)
-        expr = sp.sympify(parsed_formula, locals={"sp": sp})
+        
+        # Define local namespace with SymPy functions
+        local_dict = {
+            "sp": sp,
+            "sqrt": sp.sqrt,
+            "log": sp.log,
+            "sin": sp.sin,
+            "cos": sp.cos,
+            "tan": sp.tan,
+            "exp": sp.exp
+        }
+        expr = sp.sympify(parsed_formula, locals=local_dict)
         st.session_state.latex = sp.latex(expr)
     except Exception as e:
         error_msg = f"Invalid formula: {str(e)}"
