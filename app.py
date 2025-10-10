@@ -77,8 +77,17 @@ def update_latex():
             "exp": sp.exp
         }
         expr = sp.sympify(parsed_formula, locals=local_dict)
-        # Use latex with order='none' to preserve input order and fold_frac_powers=False for derivative notation
-        st.session_state.latex = sp.latex(expr, order='none', fold_frac_powers=False)
+        # Use latex with order='none' to preserve input order
+        # For derivatives, we need to convert the display format
+        latex_str = sp.latex(expr, order='none')
+        
+        # Replace SymPy's derivative notation with dy/dx style
+        # Pattern: \frac{d}{d x} f(x) -> \frac{df}{dx}
+        latex_str = re.sub(r'\\frac\{d\}\{d x\}\s*([a-zA-Z])', r'\\frac{d\1}{dx}', latex_str)
+        # For more complex expressions in parentheses
+        latex_str = re.sub(r'\\frac\{d\}\{d x\}\s*\\left\(([^)]+)\\right\)', r'\\frac{d(\\1)}{dx}', latex_str)
+        
+        st.session_state.latex = latex_str
     except Exception as e:
         error_msg = f"Invalid formula: {str(e)}"
         st.session_state.latex = error_msg
