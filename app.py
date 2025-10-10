@@ -1,4 +1,4 @@
-# Streamlit app to convert math formulas to LaTeX, with MathML copying for Word
+# Streamlit app to convert math formulas to LaTeX, with 3 copy options
 # Run with: streamlit run app.py
 import streamlit as st
 import sympy as sp
@@ -25,12 +25,45 @@ def append_to_formula(text):
     st.session_state.formula += text
     update_latex()
 
-# JavaScript for copying MathML to clipboard
+# JavaScript with all three copy functions
 copy_js = """
 <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/3.2.2/es5/tex-mml-chtml.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+
 <script>
-async function copyRenderedFormula() {
-    const button = document.getElementById('copy-button');
+MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']]
+  }
+};
+
+// Function 1: Copy LaTeX code as text
+function copyLatexText() {
+    const button = document.getElementById('copy-latex-btn');
+    const latexCode = document.getElementById('latex-content').innerText;
+    
+    navigator.clipboard.writeText(latexCode).then(function() {
+        button.style.backgroundColor = '#00ff00';
+        button.innerText = '✓ Copied!';
+        setTimeout(() => {
+            button.style.backgroundColor = '#0f80c1';
+            button.innerText = 'Copy LaTeX';
+        }, 1500);
+    }, function(err) {
+        console.error('Failed to copy:', err);
+        button.style.backgroundColor = '#ff0000';
+        button.innerText = 'Failed';
+        setTimeout(() => {
+            button.style.backgroundColor = '#0f80c1';
+            button.innerText = 'Copy LaTeX';
+        }, 1500);
+    });
+}
+
+// Function 2: Copy as MathML for Word
+async function copyForWord() {
+    const button = document.getElementById('copy-word-btn');
     const latexCode = document.getElementById('latex-content').innerText;
     
     try {
@@ -47,7 +80,7 @@ async function copyRenderedFormula() {
         await navigator.clipboard.write([clipboardItem]);
         
         button.style.backgroundColor = '#00ff00';
-        button.innerText = 'Copied!';
+        button.innerText = '✓ Copied!';
         setTimeout(() => {
             button.style.backgroundColor = '#0f80c1';
             button.innerText = 'Copy for Word';
@@ -59,6 +92,57 @@ async function copyRenderedFormula() {
         setTimeout(() => {
             button.style.backgroundColor = '#0f80c1';
             button.innerText = 'Copy for Word';
+        }, 1500);
+    }
+}
+
+// Function 3: Copy as Image
+async function copyAsImage() {
+    const button = document.getElementById('copy-image-btn');
+    const latexCode = document.getElementById('latex-content').innerText;
+    
+    try {
+        // Create temporary div with rendered math
+        const tempDiv = document.createElement('div');
+        tempDiv.style.position = 'absolute';
+        tempDiv.style.left = '-9999px';
+        tempDiv.style.fontSize = '24px';
+        tempDiv.style.padding = '20px';
+        tempDiv.style.backgroundColor = 'white';
+        tempDiv.innerHTML = `$$${latexCode}$$`;
+        document.body.appendChild(tempDiv);
+        
+        // Wait for MathJax to render
+        await MathJax.typesetPromise([tempDiv]);
+        
+        // Convert to canvas
+        const canvas = await html2canvas(tempDiv, {
+            backgroundColor: 'white',
+            scale: 3
+        });
+        
+        // Convert canvas to blob
+        canvas.toBlob(async (blob) => {
+            const item = new ClipboardItem({ 'image/png': blob });
+            await navigator.clipboard.write([item]);
+            
+            document.body.removeChild(tempDiv);
+            
+            button.style.backgroundColor = '#00ff00';
+            button.innerText = '✓ Copied!';
+            setTimeout(() => {
+                button.style.backgroundColor = '#0f80c1';
+                button.innerText = 'Copy as Image';
+            }, 1500);
+        });
+    } catch (err) {
+        console.error('Failed to copy:', err);
+        if (tempDiv.parentNode) document.body.removeChild(tempDiv);
+        button.style.backgroundColor = '#ff0000';
+        button.innerText = 'Failed';
+        setTimeout(() => {
+            button.style.backgroundColor = '#0f80c1';
+            button.innerText = 'Copy as Image';
         }, 1500);
     }
 }
@@ -97,18 +181,32 @@ st.write("Rendered:")
 try:
     st.latex(st.session_state.latex)
     
-    # Copy button with MathML support
+    # Three copy buttons
     components.html(f"""
     {copy_js}
     <div id="latex-content" style="display: none;">{st.session_state.latex}</div>
-    <button id="copy-button" onclick="copyRenderedFormula()" 
-            style="background-color: #0f80c1; color: white; padding: 10px 20px; 
-                   border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">
-        Copy for Word
-    </button>
-    <p style="font-size: 12px; color: #666; margin-top: 8px;">
-        Click "Copy for Word" then paste (Ctrl+V) directly into Microsoft Word
+    <div style="display: flex; gap: 10px; margin-top: 10px;">
+        <button id="copy-latex-btn" onclick="copyLatexText()" 
+                style="background-color: #0f80c1; color: white; padding: 10px 20px; 
+                       border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">
+            Copy LaTeX
+        </button>
+        <button id="copy-word-btn" onclick="copyForWord()" 
+                style="background-color: #0f80c1; color: white; padding: 10px 20px; 
+                       border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">
+            Copy for Word
+        </button>
+        <button id="copy-image-btn" onclick="copyAsImage()" 
+                style="background-color: #0f80c1; color: white; padding: 10px 20px; 
+                       border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">
+            Copy as Image
+        </button>
+    </div>
+    <p style="font-size: 12px; color: #666; margin-top: 10px;">
+        • <strong>Copy LaTeX</strong>: Copies the LaTeX code as text<br>
+        • <strong>Copy for Word</strong>: Copies as editable equation for Microsoft Word<br>
+        • <strong>Copy as Image</strong>: Copies as PNG image (works anywhere)
     </p>
-    """, height=100)
+    """, height=150)
 except:
     st.write("Unable to render LaTeX.")
