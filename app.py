@@ -95,11 +95,14 @@ def update_latex():
         }
         
         # Parse expression with evaluate=False to preserve structure
-        expr = sp.sympify(parsed_formula, locals=local_dict, evaluate=True)
-        latex_str = sp.latex(expr, mul_symbol='dot')
+        # Use rational=False to prevent conversion of floats
+        expr = sp.sympify(parsed_formula, locals=local_dict, evaluate=False, rational=False)
         
-        # Convert to LaTeX with order='none' to preserve input order
-        latex_str = latex_str.replace(r'\dot', '')
+        # Convert to LaTeX with order='none' and mul_symbol='times' to preserve order
+        latex_str = sp.latex(expr, order='none', mul_symbol='times')
+        
+        # Replace \times with \cdot for better appearance, or remove it for implicit multiplication
+        latex_str = latex_str.replace(r' \times ', r' ')
         
         # Clean up LaTeX output for derivatives
         latex_str = re.sub(r'\\frac\{d\}\{d x\}\s*([a-zA-Z])', r'\\frac{d\1}{dx}', latex_str)
