@@ -49,12 +49,17 @@ def update_cursor_pos():
     except:
         st.session_state.cursor_pos = 0
 
+# --- Function: Update formula and cursor ---
+def update_formula_and_cursor():
+    update_cursor_pos()
+    update_latex()
+
 # --- Function: Update LaTeX from formula or LaTeX input ---
 def update_latex():
     if st.session_state.latex_edited:
         # If LaTeX was edited, use it directly if valid
         latex_str = st.session_state.latex.strip()
-        if latex_str.startswith("\\") or re.search(r"\\frac|\\int|\\sqrt|\\left|\\sum", latex_str):
+        if latex_str and (latex_str.startswith("\\") or re.search(r"\\frac|\\int|\\sqrt|\\left|\\sum", latex_str)):
             try:
                 # Basic validation: attempt to render LaTeX
                 plt.figure()
@@ -78,7 +83,7 @@ def update_latex():
         return
 
     # Auto-detect if formula is LaTeX
-    if formula.startswith("\\") or re.search(r"\\frac|\\int|\\sqrt|\\left|\\sum", formula):
+    if formula and (formula.startswith("\\") or re.search(r"\\frac|\\int|\\sqrt|\\left|\\sum", formula)):
         st.session_state.latex = formula
         return
 
@@ -262,7 +267,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # Text input with cursor tracking
-st.text_input("Enter formula (e.g., sigma_1 = kappa * x^2)", key="formula", on_change=update_cursor_pos)
+st.text_input("Enter formula (e.g., sigma_1 = kappa * x^2)", key="formula", on_change=update_formula_and_cursor)
 
 # Tabbed interface for symbol groups
 tab1, tab2, tab3, tab4 = st.tabs(["Mathematical Symbols", "Greek Characters", "Engineering Symbols", "Petroleum Engineering"])
@@ -296,7 +301,7 @@ button_groups = {
         ("π", "pi"),
         ("e", "e"),
         ("∞", "oo"),
-        ("_", "_"),  # Added for manual subscript
+        ("_", "_"),  # For manual subscript
     ],
     "Greek Characters": [
         ("α", "alpha"),
