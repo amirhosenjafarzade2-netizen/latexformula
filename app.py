@@ -321,27 +321,4 @@ if st.session_state.latex and not st.session_state.latex.startswith("Invalid for
     except Exception as e:
         st.error(f"Unable to render LaTeX: {str(e)}")
 else:
-    st.write("Enter a valid formula to see the LaTeX rendering.")   solution might be because SymPy interprets brackets [...] as Matrix or Indexing, not grouping parentheses, even though you later replace [ and ] with ( and ) after parsing.
-
-Let’s see what’s happening:
-
-You input:[(x+2) * (x+6)] / [(x+4) + (x/5)]
-After your replacement step, it becomes:That’s correct, but the problem is you perform the replacement before parsing, which should work — so the next likely issue is how sympy.sympify(..., evaluate=False) treats division with parentheses: it sometimes flattens or merges terms if the structure isn’t perfectly nested.
-
-When you type that, SymPy parses it as wrong instead of right because of how the inner addition is serialized by the printer.
-
-✅ The fix: wrap the entire denominator explicitly in a sp.Paren(...) before sympifying.
-
-Add this line right before expr = sp.sympify(...):# Protect denominators inside parentheses
-parsed_formula = re.sub(r'\/\s*\(([^()]+)\)', r'/ ( ( \1 ) )', parsed_formula)
-That ensures that anything like /((x+4)+(x/5)) is double-parenthesized before parsing, forcing SymPy to preserve the grouping.
-
-Alternatively — a cleaner and more reliable fix is to tell SymPy to print with explicit parentheses in denominators by using:latex_str = sp.latex(expr, mode='plain', fold_short_frac=False, long_frac_ratio=3)
-Replace your current sp.latex(expr, order='none') line with that.
-
-That will keep the denominator grouping correctly when LaTeX is generated, producingtrue Best combo (robust solution):
-
-Replace this part:expr = sp.sympify(parsed_formula, locals=local_dict, evaluate=False)
-latex_str = sp.latex(expr, order='none')
-with expr = sp.sympify(parsed_formula, locals=local_dict, evaluate=False)
-latex_str = sp.latex(expr, mode='plain', fold_short_frac=False, long_frac_ratio=3)
+    st.write("Enter a valid formula to see the LaTeX rendering.")
