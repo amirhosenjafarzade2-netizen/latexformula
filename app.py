@@ -23,7 +23,6 @@ if "latex" not in st.session_state:
 def is_valid_formula(formula):
     if not formula.strip():
         return False, "Formula is empty."
-    # Don't check for trailing underscore since it's valid for subscripts
     if formula.strip()[-1] in ['+', '-', '*', '/', '^']:
         return False, "Formula ends with an incomplete operator."
     if formula.count('(') != formula.count(')'):
@@ -45,28 +44,11 @@ def update_latex():
         return
 
     try:
-        # Step 1: Find all subscript patterns and create temporary replacements
-        subscript_pattern = r'([a-zA-Z]+)_([a-zA-Z0-9]+)'
-        subscript_mapping = {}
-        temp_counter = 0
+        # Step 1: Find all subscript variables (e.g., x_2, var_name)
+        subscript_pattern = r'\b([a-zA-Z]+)_([a-zA-Z0-9]+)\b'
+        subscript_vars = set(re.findall(subscript_pattern, formula))
         
-        def replace_with_temp(match):
-            nonlocal temp_counter
-            original = match.group(0)
-            base = match.group(1)
-            subscript = match.group(2)
-            temp_var = f"TEMPVAR{temp_counter}"
-            subscript_mapping[temp_var] = (base, subscript)
-            temp_counter += 1
-            return temp_var
-        
-        # Replace all subscripts with temporary variable names
-        modified_formula = re.sub(subscript_pattern, replace_with_temp, formula)
-        
-        # Step 2: Replace ^ with **
-        modified_formula = modified_formula.replace("^", "**")
-        
-        # Step 3: Parse the modified formula
+        # Step 2: Create SymPy symbols with underscores directly
         local_dict = {
             "sp": sp,
             "sqrt": sp.sqrt,
@@ -77,22 +59,21 @@ def update_latex():
             "exp": sp.exp
         }
         
-        # Add all temporary variables to local_dict as symbols
-        for temp_var in subscript_mapping.keys():
-            local_dict[temp_var] = sp.Symbol(temp_var)
-
+        # Add subscripted variables as symbols
+        for base, subscript in subscript_vars:
+            var_name = f"{base}_{subscript}"
+            local_dict[var_name] = sp.Symbol(var_name)
+        
+        # Step 3: Replace ^ with ** but DON'T touch underscores
+        parsed_formula = formula.replace("^", "**")
+        
+        # Step 4: Parse the formula
         transformations = standard_transformations + (
             implicit_multiplication_application,
             convert_xor
         )
 
-        expr = parse_expr(modified_formula, local_dict=local_dict, transformations=transformations)
-        
-        # Step 4: Replace temporary symbols with proper subscripted symbols
-        for temp_var, (base, subscript) in subscript_mapping.items():
-            temp_symbol = sp.Symbol(temp_var)
-            proper_symbol = sp.Symbol(f"{base}_{subscript}")
-            expr = expr.subs(temp_symbol, proper_symbol)
+        expr = parse_expr(parsed_formula, local_dict=local_dict, transformations=transformations)
         
         # Step 5: Convert to LaTeX
         latex_str = sp.latex(expr, order='none')
