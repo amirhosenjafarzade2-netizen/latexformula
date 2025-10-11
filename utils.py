@@ -4,11 +4,11 @@ from sympy.parsing.sympy_parser import parse_expr, standard_transformations, imp
 import re
 from functools import lru_cache
 import matplotlib.pyplot as plt
-import matplotlib
 from io import BytesIO
 import base64
+import streamlit as st
 
-matplotlib.use('Agg')
+plt.switch_backend('Agg')
 
 def is_valid_formula(formula, mode):
     if not formula.strip():
@@ -56,20 +56,21 @@ def get_locals(formula):
     for var in variables:
         if var not in local_dict and var not in reserved:
             symbol = sp.Symbol(var)
-            if '_' in var:
+            if '_' in var and st.session_state.mode == "LaTeX":
                 base, subscript = var.split('_', 1)
                 symbol._latex_repr = f"{base}_{{{subscript}}}"
             local_dict[var] = symbol
     return local_dict
 
-def update_latex(st):
-    if st.session_state.subscript_trigger:
+def update_latex():
+    if st.session_state.get('subscript_trigger', False):
         return
     formula = st.session_state.formula
-    if st.session_state.mode == "LaTeX":
+    mode = st.session_state.mode
+    if mode == "LaTeX":
         st.session_state.latex = formula
         return
-    valid, error_msg = is_valid_formula(formula, st.session_state.mode)
+    valid, error_msg = is_valid_formula(formula, mode)
     if not valid:
         st.session_state.latex = f"Invalid formula: {error_msg}"
         st.error(error_msg)
@@ -90,7 +91,7 @@ def update_latex(st):
         st.session_state.latex = f"Invalid formula: {str(e)}"
         st.error(str(e))
 
-def sync_to_sympy(st):
+def sync_to_sympy():
     latex = st.session_state.latex
     if not latex or st.session_state.mode != "LaTeX":
         st.warning("Switch to LaTeX mode first.")
@@ -132,6 +133,7 @@ def latex_to_image(latex_str):
         buf.seek(0)
         return base64.b64encode(buf.read()).decode()
     except Exception as e:
+        st.error(f"Image generation error: {str(e)}")
         return None
 
 def latex_to_pdf(latex_str):
@@ -159,39 +161,39 @@ def latex_to_pdf(latex_str):
         buf.seek(0)
         return base64.b64encode(buf.read()).decode()
     except Exception as e:
+        st.error(f"PDF generation error: {str(e)}")
         return None
 
-def append_to_formula(st, text):
+def append_to_formula(symbol):
     temp_formula = st.session_state.formula
-    if st.session_state.mode == "LaTeX":
-        temp_formula += text
+    mode = st.session_state.mode
+    if mode == "LaTeX":
+        text = symbol.get("LaTeX", symbol.get("SymPy", ""))
     else:
+        text = symbol.get("SymPy", symbol.get("LaTeX", ""))
         text = text.replace('_{}', '_').replace('^{}', '^')
-        temp_formula += text
-    st.session_state.formula = temp_formula
-    update_latex(st)
+    temp_formula += text
+    return temp_formula
 
-def add_subscript(st, subscript, selected_param):
+def add_subscript(subscript, selected_param):
     if not subscript.strip():
         st.error("Subscript cannot be empty.")
-        return
+        return None
     if not re.match(r'^[\w\d]+$', subscript):
         st.error("Subscript must be alphanumeric.")
-        return
+        return None
     formula = st.session_state.formula
     if not formula.strip():
         st.error("Formula is empty. Enter a parameter to subscript.")
-        return
+        return None
     if st.session_state.mode == "LaTeX":
         st.warning("Subscript adding is optimized for SymPy mode. In LaTeX, use manual _{sub} syntax.")
-        return
+        return None
     param_positions = [m.start() for m in re.finditer(r'\b' + re.escape(selected_param) + r'\b', formula)]
     if param_positions:
         last_pos = param_positions[-1]
-        st.session_state.subscript_trigger = True
         new_formula = formula[:last_pos] + f"{selected_param}_{subscript}" + formula[last_pos + len(selected_param):]
-        st.session_state.formula = new_formula
-        st.session_state.subscript_trigger = False
-        update_latex(st)
+        return new_formula
     else:
         st.error("Selected parameter not found in formula.")
+        return None
