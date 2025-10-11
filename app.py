@@ -220,16 +220,18 @@ st.markdown("""
 
 # Formula input with syntax highlighting
 st.write("Enter your formula")
-ace.st_ace(
+formula_input = ace.st_ace(
     value=st.session_state.formula_input,
     language="python",
     theme="monokai",
     key="formula_input",
     auto_update=False,
     height=100,
-    placeholder="e.g., (x+2)/(x-1), sin(x^2), Integral(x^2, x)",
-    on_change=update_formula
+    placeholder="e.g., (x+2)/(x-1), sin(x^2), Integral(x^2, x)"
 )
+if formula_input != st.session_state.formula_input:
+    st.session_state.formula_input = formula_input
+    update_formula()
 
 # Display error highlighting
 if st.session_state.error_highlight:
