@@ -67,9 +67,6 @@ def update_latex():
         # Replace square brackets with parentheses
         parsed_formula = formula.replace("[", "(").replace("]", ")")
         
-        # Preprocess implicit multiplication (e.g., x2 -> x * 2)
-        parsed_formula = re.sub(r'([a-zA-Z])(\d+)', r'\1 * \2', parsed_formula)
-        
         # Replace ^ with ** for exponentiation
         parsed_formula = parsed_formula.replace("^", "**")
         
@@ -98,17 +95,15 @@ def update_latex():
         }
         
         # Parse expression with evaluate=False to preserve structure
-        expr = sp.sympify(parsed_formula, locals=local_dict, evaluate=False)
+        expr = sp.sympify(parsed_formula, locals=local_dict, evaluate=True)
+        latex_str = sp.latex(expr, mul_symbol='dot')
         
         # Convert to LaTeX with order='none' to preserve input order
-        latex_str = sp.latex(expr, order='none')
+        latex_str = latex_str.replace(r'\dot', '')
         
         # Clean up LaTeX output for derivatives
         latex_str = re.sub(r'\\frac\{d\}\{d x\}\s*([a-zA-Z])', r'\\frac{d\1}{dx}', latex_str)
         latex_str = re.sub(r'\\frac\{d\}\{d x\}\s*\\left\(([^)]+)\\right\)', r'\\frac{d(\\1)}{dx}', latex_str)
-        
-        # Reorder multiplication terms (e.g., x \cdot 2 -> 2x)
-        latex_str = re.sub(r'([a-zA-Z])\s*\\cdot\s*(\d+)', r'\2\1', latex_str)
         
         st.session_state.latex = latex_str
     except Exception as e:
