@@ -7,15 +7,21 @@ import matplotlib.pyplot as plt
 from io import BytesIO
 import base64
 import streamlit as st
+import logging
+
+# Set up logging
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
 
 plt.switch_backend('Agg')
 
 def is_valid_formula(formula, mode):
+    logger.debug(f"Validating formula: {formula}, mode: {mode}")
     if not formula.strip():
         return False, "Formula is empty."
     if formula.strip()[-1] in ['+', '-', '*', '/', '^', '_']:
         return False, "Formula ends with an incomplete operator."
-    if mode == "LaTeX" and ('{' in formula or '}' in formula):
+    if mode == "SymPy" and ('{' in formula or '}' in formula):
         return False, "LaTeX braces {} not allowed in SymPy mode. Use _sub (e.g., x_1)."
     incomplete_functions = ['sqrt(', 'log(', 'Integral(', 'Derivative(', 'Sum(', 'Limit(', 'sin(', 'cos(', 'tan(', 'cot(', 'sec(', 'csc(', 'asin(', 'acos(', 'atan(', 'sinh(', 'cosh(', 'tanh(', 'exp(']
     for func in incomplete_functions:
@@ -34,6 +40,7 @@ def is_valid_formula(formula, mode):
     return True, ""
 
 def get_locals(formula):
+    logger.debug(f"Getting locals for formula: {formula}")
     local_dict = {
         "sp": sp, "sqrt": sp.sqrt, "log": sp.log, "sin": sp.sin, "cos": sp.cos, "tan": sp.tan,
         "cot": sp.cot, "sec": sp.sec, "csc": sp.csc, "asin": sp.asin, "acos": sp.acos, "atan": sp.atan,
@@ -56,26 +63,29 @@ def get_locals(formula):
     for var in variables:
         if var not in local_dict and var not in reserved:
             symbol = sp.Symbol(var)
-            if '_' in var and st.session_state.mode == "LaTeX":
+            if '_' in var and st.session_state.get('mode') == "LaTeX":
                 base, subscript = var.split('_', 1)
                 symbol._latex_repr = f"{base}_{{{subscript}}}"
             local_dict[var] = symbol
     return local_dict
 
 def update_latex():
-    if st.session_state.get('subscript_trigger', False):
-        return
-    formula = st.session_state.formula
-    mode = st.session_state.mode
-    if mode == "LaTeX":
-        st.session_state.latex = formula
-        return
-    valid, error_msg = is_valid_formula(formula, mode)
-    if not valid:
-        st.session_state.latex = f"Invalid formula: {error_msg}"
-        st.error(error_msg)
-        return
     try:
+        if st.session_state.get('subscript_trigger', False):
+            logger.debug("Skipping update due to subscript trigger")
+            return
+        formula = st.session_state.formula
+        mode = st.session_state.mode
+        logger.debug(f"Updating LaTeX for formula: {formula}, mode: {mode}")
+        if mode == "LaTeX":
+            st.session_state.latex = formula
+            return
+        valid, error_msg = is_valid_formula(formula, mode)
+        if not valid:
+            st.session_state.latex = f"Invalid formula: {error_msg}"
+            st.error(error_msg)
+            logger.error(f"Formula validation failed: {error_msg}")
+            return
         parsed_formula = formula.replace("^", "**")
         local_dict = get_locals(parsed_formula)
         transformations = standard_transformations + (implicit_multiplication_application,)
@@ -87,14 +97,19 @@ def update_latex():
         st.session_state.history.append((formula, latex_str))
         if len(st.session_state.history) > 10:
             st.session_state.history.pop(0)
+        logger.debug(f"LaTeX updated: {latex_str}")
     except Exception as e:
-        st.session_state.latex = f"Invalid formula: {str(e)}"
-        st.error(str(e))
+        error_msg = f"Invalid formula: {str(e)}"
+        st.session_state.latex = error_msg
+        st.error(error_msg)
+        logger.error(f"Error updating LaTeX: {str(e)}")
 
 def sync_to_sympy():
+    logger.debug("Syncing LaTeX to SymPy")
     latex = st.session_state.latex
     if not latex or st.session_state.mode != "LaTeX":
         st.warning("Switch to LaTeX mode first.")
+        logger.warning("Sync attempted in wrong mode or with empty LaTeX")
         return
     sympy_approx = re.sub(r'([a-zA-Z])_\{([^}]+)\}', r'\1_\2', latex)
     sympy_approx = re.sub(r'\^(\{?)([^}]+)(\}?)', r'^\2', sympy_approx)
@@ -105,10 +120,12 @@ def sync_to_sympy():
     sympy_approx = re.sub(r'\\sum_\{([^}]+)\}\^\{([^}]+)\}', r'sum(\1,\2)', sympy_approx)
     st.session_state.formula = sympy_approx
     st.session_state.mode = "SymPy"
+    logger.debug(f"Synced to SymPy: {sympy_approx}")
     st.rerun()
 
 @lru_cache(maxsize=100)
 def latex_to_image(latex_str):
+    logger.debug(f"Generating image for LaTeX: {latex_str}")
     try:
         char_count = len(latex_str)
         fontsize = min(20, max(12, 20 - char_count // 10))
@@ -134,9 +151,11 @@ def latex_to_image(latex_str):
         return base64.b64encode(buf.read()).decode()
     except Exception as e:
         st.error(f"Image generation error: {str(e)}")
+        logger.error(f"Image generation failed: {str(e)}")
         return None
 
 def latex_to_pdf(latex_str):
+    logger.debug(f"Generating PDF for LaTeX: {latex_str}")
     try:
         char_count = len(latex_str)
         fontsize = min(20, max(12, 20 - char_count // 10))
@@ -162,9 +181,11 @@ def latex_to_pdf(latex_str):
         return base64.b64encode(buf.read()).decode()
     except Exception as e:
         st.error(f"PDF generation error: {str(e)}")
+        logger.error(f"PDF generation failed: {str(e)}")
         return None
 
 def append_to_formula(symbol):
+    logger.debug(f"Appending symbol: {symbol}")
     temp_formula = st.session_state.formula
     mode = st.session_state.mode
     text = symbol.get("LaTeX", symbol.get("SymPy", "")) if mode == "LaTeX" else symbol.get("SymPy", symbol.get("LaTeX", ""))
@@ -175,18 +196,23 @@ def append_to_formula(symbol):
     update_latex()
 
 def add_subscript(subscript, selected_param):
+    logger.debug(f"Adding subscript: {subscript} to parameter: {selected_param}")
     if not subscript.strip():
         st.error("Subscript cannot be empty.")
+        logger.error("Empty subscript provided")
         return
     if not re.match(r'^[\w\d]+$', subscript):
         st.error("Subscript must be alphanumeric.")
+        logger.error("Invalid subscript format")
         return
     formula = st.session_state.formula
     if not formula.strip():
         st.error("Formula is empty. Enter a parameter to subscript.")
+        logger.error("Empty formula for subscript")
         return
     if st.session_state.mode == "LaTeX":
         st.warning("Subscript adding is optimized for SymPy mode. In LaTeX, use manual _{sub} syntax.")
+        logger.warning("Subscript attempted in LaTeX mode")
         return
     param_positions = [m.start() for m in re.finditer(r'\b' + re.escape(selected_param) + r'\b', formula)]
     if param_positions:
@@ -197,5 +223,7 @@ def add_subscript(subscript, selected_param):
         st.session_state.formula = new_formula
         st.session_state.subscript_trigger = False
         update_latex()
+        logger.debug(f"Subscript applied: {new_formula}")
     else:
         st.error("Selected parameter not found in formula.")
+        logger.error(f"Parameter {selected_param} not found in formula")
