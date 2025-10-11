@@ -150,13 +150,16 @@ for i, (label, text) in enumerate(buttons):
         # Special styling for subscript button
         if label == "ₓ":
             button_color = "🟢" if st.session_state.subscript_mode else "🔴"
-            if st.button(f"{button_color} {label}", key=f"btn_{i}"):
-                if text == "_":
-                    toggle_subscript_mode()
-                else:
-                    append_to_formula(text)
+            st.button(f"{button_color} {label}", on_click=partial(append_to_formula, text), key=f"btn_{i}")
         else:
             st.button(label, on_click=partial(append_to_formula, text), key=f"btn_{i}")
+
+# Add a separate toggle button for subscript mode
+col1, col2, col3 = st.columns([1, 2, 1])
+with col1:
+    mode_text = "Subscript Mode: ON 🟢" if st.session_state.subscript_mode else "Subscript Mode: OFF 🔴"
+    if st.button(mode_text, key="toggle_mode"):
+        toggle_subscript_mode()
 
 st.text_input("LaTeX version", key="latex")
 
