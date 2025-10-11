@@ -23,28 +23,12 @@ if "latex" not in st.session_state:
 def is_valid_formula(formula):
     if not formula.strip():
         return False, "Formula is empty."
+    # Don't check for trailing underscore since it's valid for subscripts
     if formula.strip()[-1] in ['+', '-', '*', '/', '^']:
         return False, "Formula ends with an incomplete operator."
     if formula.count('(') != formula.count(')'):
         return False, "Unbalanced parentheses."
     return True, ""
-
-# --- Function: Convert subscripts to SymPy format ---
-def convert_subscripts(formula):
-    """Convert x_2 notation to SymPy Symbol('x_2') format"""
-    # Match patterns like x_2, y_10, var_name, etc. but not inside function calls
-    # Use word boundaries and lookbehind to avoid matching function names
-    pattern = r'\b([a-zA-Z])_([0-9]+)\b'
-    
-    def replace_subscript(match):
-        base = match.group(1)
-        subscript = match.group(2)
-        # Create a unique symbol name that won't conflict
-        return f"{base}{subscript}sub"
-    
-    # Store mapping for later conversion back to proper subscript in LaTeX
-    converted = re.sub(pattern, replace_subscript, formula)
-    return converted
 
 # --- Function: Update LaTeX from formula ---
 def update_latex():
@@ -61,25 +45,30 @@ def update_latex():
         return
 
     try:
-        # Convert ^ to ** and handle subscripts
-        parsed_formula = formula.replace("^", "**")
+        # Step 1: Find all subscript patterns and create temporary replacements
+        subscript_pattern = r'([a-zA-Z]+)_([a-zA-Z0-9]+)'
+        subscript_mapping = {}
+        temp_counter = 0
         
-        # Find and store subscript mappings
-        subscript_map = {}
-        pattern = r'\b([a-zA-Z])_([0-9]+)\b'
-        matches = re.finditer(pattern, parsed_formula)
-        for match in matches:
+        def replace_with_temp(match):
+            nonlocal temp_counter
+            original = match.group(0)
             base = match.group(1)
             subscript = match.group(2)
-            temp_name = f"{base}{subscript}sub"
-            subscript_map[temp_name] = (base, subscript)
+            temp_var = f"TEMPVAR{temp_counter}"
+            subscript_mapping[temp_var] = (base, subscript)
+            temp_counter += 1
+            return temp_var
         
-        # Replace subscripts with temporary names
-        parsed_formula = re.sub(pattern, lambda m: f"{m.group(1)}{m.group(2)}sub", parsed_formula)
+        # Replace all subscripts with temporary variable names
+        modified_formula = re.sub(subscript_pattern, replace_with_temp, formula)
         
+        # Step 2: Replace ^ with **
+        modified_formula = modified_formula.replace("^", "**")
+        
+        # Step 3: Parse the modified formula
         local_dict = {
             "sp": sp,
-            "Symbol": sp.Symbol,
             "sqrt": sp.sqrt,
             "log": sp.log,
             "sin": sp.sin,
@@ -87,20 +76,25 @@ def update_latex():
             "tan": sp.tan,
             "exp": sp.exp
         }
+        
+        # Add all temporary variables to local_dict as symbols
+        for temp_var in subscript_mapping.keys():
+            local_dict[temp_var] = sp.Symbol(temp_var)
 
         transformations = standard_transformations + (
             implicit_multiplication_application,
             convert_xor
         )
 
-        expr = parse_expr(parsed_formula, local_dict=local_dict, transformations=transformations)
+        expr = parse_expr(modified_formula, local_dict=local_dict, transformations=transformations)
         
-        # Replace temporary symbols with proper subscript symbols
-        for temp_name, (base, subscript) in subscript_map.items():
-            temp_sym = sp.Symbol(temp_name)
-            subscript_sym = sp.Symbol(f"{base}_{subscript}")
-            expr = expr.subs(temp_sym, subscript_sym)
+        # Step 4: Replace temporary symbols with proper subscripted symbols
+        for temp_var, (base, subscript) in subscript_mapping.items():
+            temp_symbol = sp.Symbol(temp_var)
+            proper_symbol = sp.Symbol(f"{base}_{subscript}")
+            expr = expr.subs(temp_symbol, proper_symbol)
         
+        # Step 5: Convert to LaTeX
         latex_str = sp.latex(expr, order='none')
 
         st.session_state.latex = latex_str
@@ -147,7 +141,7 @@ def append_to_formula(text):
 # --- UI ---
 st.title("Formula ↔ LaTeX Converter")
 
-st.text_input("Enter formula (e.g., x^2 + sqrt(y) or paste LaTeX)", key="formula", on_change=update_latex)
+st.text_input("Enter formula (e.g., x^2 + sqrt(y) or x_2 for subscripts)", key="formula", on_change=update_latex)
 
 st.write("Math tools:")
 cols = st.columns(9)
