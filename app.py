@@ -16,10 +16,10 @@ if "formula" not in st.session_state:
     st.session_state.formula = ""
 if "latex" not in st.session_state:
     st.session_state.latex = ""
-if "temp_formula" not in st.session_state:
-    st.session_state.temp_formula = ""
 if "subscript_trigger" not in st.session_state:
     st.session_state.subscript_trigger = False
+if "last_valid_formula" not in st.session_state:
+    st.session_state.last_valid_formula = ""
 
 # Function to validate formula
 def is_valid_formula(formula):
@@ -44,102 +44,113 @@ def is_valid_formula(formula):
 # Function to get locals with automatic symbol declaration
 def get_locals(formula):
     local_dict = {
-        "sp": sp,
-        "sqrt": sp.sqrt,
-        "log": sp.log,
-        "sin": sp.sin,
-        "cos": sp.cos,
-        "tan": sp.tan,
-        "cot": sp.cot,
-        "sec": sp.sec,
-        "csc": sp.csc,
-        "asin": sp.asin,
-        "acos": sp.acos,
-        "atan": sp.atan,
-        "sinh": sp.sinh,
-        "cosh": sp.cosh,
-        "tanh": sp.tanh,
-        "exp": sp.exp,
-        "Sum": sp.Sum,
-        "Limit": sp.Limit,
-        "Integral": sp.Integral,
-        "Derivative": sp.Derivative,
-        "oo": sp.oo,
-        "pi": sp.pi,
-        "e": sp.E,
-        "phi": sp.Symbol('phi'),
-        "kappa": sp.Symbol('kappa'),
-        "mu": sp.Symbol('mu'),
-        "alpha": sp.Symbol('alpha'),
-        "beta": sp.Symbol('beta'),
-        "gamma": sp.Symbol('gamma'),
-        "delta": sp.Symbol('delta'),
-        "Delta": sp.Symbol('Delta'),
-        "epsilon": sp.Symbol('epsilon'),
-        "zeta": sp.Symbol('zeta'),
-        "eta": sp.Symbol('eta'),
-        "theta": sp.Symbol('theta'),
-        "Theta": sp.Symbol('Theta'),
-        "iota": sp.Symbol('iota'),
-        "lambda": sp.Symbol('lambda'),
-        "Lambda": sp.Symbol('Lambda'),
-        "nu": sp.Symbol('nu'),
-        "xi": sp.Symbol('xi'),
-        "rho": sp.Symbol('rho'),
-        "sigma": sp.Symbol('sigma'),
-        "Sigma": sp.Symbol('Sigma'),
-        "tau": sp.Symbol('tau'),
-        "Phi": sp.Symbol('Phi'),
-        "omega": sp.Symbol('omega'),
-        "Omega": sp.Symbol('Omega'),
-        "degree": sp.Symbol('degree'),
-        "approx": sp.Symbol('approx'),
-        "ne": sp.Symbol('ne'),
-        "ge": sp.Symbol('ge'),
-        "le": sp.Symbol('le'),
+        "sp": sp, "sqrt": sp.sqrt, "log": sp.log, "sin": sp.sin, "cos": sp.cos,
+        "tan": sp.tan, "cot": sp.cot, "sec": sp.sec, "csc": sp.csc, "asin": sp.asin,
+        "acos": sp.acos, "atan": sp.atan, "sinh": sp.sinh, "cosh": sp.cosh,
+        "tanh": sp.tanh, "exp": sp.exp, "Sum": sp.Sum, "Limit": sp.Limit,
+        "Integral": sp.Integral, "Derivative": sp.Derivative, "oo": sp.oo,
+        "pi": sp.pi, "e": sp.E
     }
+    
+    # Add Greek letters and common symbols
+    greek_symbols = {
+        'phi': 'phi', 'kappa': 'kappa', 'mu': 'mu', 'alpha': 'alpha', 'beta': 'beta',
+        'gamma': 'gamma', 'delta': 'delta', 'Delta': 'Delta', 'epsilon': 'epsilon',
+        'zeta': 'zeta', 'eta': 'eta', 'theta': 'theta', 'Theta': 'Theta',
+        'iota': 'iota', 'lambda': 'lambda', 'Lambda': 'Lambda', 'nu': 'nu',
+        'xi': 'xi', 'rho': 'rho', 'sigma': 'sigma', 'Sigma': 'Sigma', 'tau': 'tau',
+        'Phi': 'Phi', 'omega': 'omega', 'Omega': 'Omega', 'degree': 'degree',
+        'approx': 'approx', 'ne': 'ne', 'ge': 'ge', 'le': 'le'
+    }
+    
+    for name, sym_name in greek_symbols.items():
+        local_dict[name] = sp.Symbol(sym_name)
+    
     # Automatically add undefined variables as symbols, including subscripted ones
     variables = re.findall(r'\b[a-zA-Z]\w*(?:_\w+)?\b', formula)
     reserved = ['sqrt', 'log', 'sin', 'cos', 'tan', 'cot', 'sec', 'csc', 'asin', 'acos', 'atan',
                 'sinh', 'cosh', 'tanh', 'exp', 'Sum', 'Limit', 'Integral', 'Derivative', 'oo', 'pi', 'e']
+    
     for var in variables:
         if var not in local_dict and var not in reserved:
-            symbol = sp.Symbol(var)
-            if '_' in var:
-                base, subscript = var.split('_', 1)
-                symbol._latex_repr = f"{base}_{{{subscript}}}"
-            local_dict[var] = symbol
+            local_dict[var] = sp.Symbol(var)
+    
     return local_dict
 
 # Function to update LaTeX from formula
 def update_latex():
     if st.session_state.subscript_trigger:
-        return  # Skip update during subscript application
+        return
     formula = st.session_state.formula
     valid, error_msg = is_valid_formula(formula)
     if not valid:
         st.session_state.latex = f"Invalid formula: {error_msg}"
-        st.error(error_msg)
         return
     try:
-        # Replace ^ with ** for exponentiation
         parsed_formula = formula.replace("^", "**")
         local_dict = get_locals(parsed_formula)
         expr = parse_expr(parsed_formula, local_dict=local_dict, transformations=standard_transformations)
         latex_str = sp.latex(expr, order='none')
+        # Clean up LaTeX for derivatives
         latex_str = re.sub(r'\\frac\{d\}\{d x\}\s*([a-zA-Z])', r'\\frac{d\1}{dx}', latex_str)
         latex_str = re.sub(r'\\frac\{d\}\{d x\}\s*\\left\(([^)]+)\\right\)', r'\\frac{d(\\1)}{dx}', latex_str)
         st.session_state.latex = latex_str
+        st.session_state.last_valid_formula = formula  # Store last valid formula
     except Exception as e:
-        error_msg = f"Invalid formula: {str(e)}"
+        error_msg = f"Parsing error: {str(e)}"
         st.session_state.latex = error_msg
-        st.error(error_msg)
 
-# Cached function to create image from LaTeX
+# Callback for formula input change
+def on_formula_change():
+    st.session_state.formula = st.session_state.formula_input
+    update_latex()
+
+# Callback for subscript application
+def on_apply_subscript():
+    parameters = get_parameters(st.session_state.formula)
+    if not parameters:
+        st.error("No parameters found in formula.")
+        return
+    
+    selected_param = st.session_state.selected_param
+    subscript_input = st.session_state.subscript_input
+    
+    if selected_param not in parameters:
+        st.error("Selected parameter not found in formula.")
+        return
+    
+    if not subscript_input.strip():
+        st.error("Subscript cannot be empty.")
+        return
+    if not re.match(r'^[\w\d]+$', subscript_input):
+        st.error("Subscript must be alphanumeric.")
+        return
+    
+    # Find and replace the last occurrence of the parameter
+    formula = st.session_state.formula
+    param_positions = [m.start() for m in re.finditer(r'\b' + re.escape(selected_param) + r'\b', formula)]
+    if param_positions:
+        last_pos = param_positions[-1]
+        new_formula = formula[:last_pos] + f"{selected_param}_{subscript_input}" + formula[last_pos + len(selected_param):]
+        st.session_state.formula = new_formula
+        st.session_state.formula_input = new_formula  # Update the input widget value
+        update_latex()
+        st.success(f"Applied subscript '{subscript_input}' to '{selected_param}'")
+    else:
+        st.error("Parameter replacement failed.")
+
+# Function to get parameters from formula
+def get_parameters(formula):
+    params = re.findall(r'\b[a-zA-Z]\w*(?:_\w+)?\b', formula)
+    # Filter out reserved words
+    reserved = ['sqrt', 'log', 'sin', 'cos', 'tan', 'cot', 'sec', 'csc', 'asin', 'acos', 'atan',
+                'sinh', 'cosh', 'tanh', 'exp', 'Sum', 'Limit', 'Integral', 'Derivative', 'oo', 'pi', 'e']
+    return [p for p in params if p not in reserved]
+
+# Cached function to create image from LaTeX (unchanged)
 @lru_cache(maxsize=100)
 def latex_to_image(latex_str):
     try:
-        # Dynamic sizing based on length
         char_count = len(latex_str)
         fontsize = min(20, max(12, 20 - char_count // 10))
         temp_fig = plt.figure(figsize=(10, 2))
@@ -164,278 +175,167 @@ def latex_to_image(latex_str):
         buf.seek(0)
         img_b64 = base64.b64encode(buf.read()).decode()
         return img_b64
-    except Exception as e:
-        st.error(f"Image generation error: {str(e)}")
+    except:
         return None
 
-# Function to append text to formula
+# Function to append text to formula using callback
 def append_to_formula(text):
-    st.session_state.temp_formula = st.session_state.formula + text
-    st.session_state.formula = st.session_state.temp_formula
+    new_formula = st.session_state.formula + text
+    st.session_state.formula = new_formula
+    st.session_state.formula_input = new_formula
     update_latex()
-
-# Function to get parameters from formula
-def get_parameters(formula):
-    return re.findall(r'\b[a-zA-Z]\w*(?:_\w+)?\b', formula)
-
-# Function to add subscript to selected parameter
-def add_subscript(subscript, selected_param):
-    if not subscript.strip():
-        st.error("Subscript cannot be empty.")
-        return
-    if not re.match(r'^[\w\d]+$', subscript):
-        st.error("Subscript must be alphanumeric.")
-        return
-    formula = st.session_state.formula
-    if not formula.strip():
-        st.error("Formula is empty. Enter a parameter to subscript.")
-        return
-    # Replace the selected parameter with subscripted version
-    # Find the last occurrence to avoid replacing earlier ones if duplicates
-    param_positions = [m.start() for m in re.finditer(r'\b' + re.escape(selected_param) + r'\b', formula)]
-    if param_positions:
-        last_pos = param_positions[-1]
-        st.session_state.subscript_trigger = True
-        new_formula = formula[:last_pos] + f"{selected_param}_{subscript}" + formula[last_pos + len(selected_param):]
-        st.session_state.temp_formula = new_formula
-        st.session_state.formula = new_formula
-        st.session_state.subscript_trigger = False
-        update_latex()
-    else:
-        st.error("Selected parameter not found in formula.")
 
 # UI
 st.title("Formula to LaTeX Converter")
 
-# Formula input
-st.text_input("Enter formula (e.g., x^2 + sqrt(y))", key="formula", value=st.session_state.formula, on_change=update_latex)
+# Store current formula in session state for widget
+if "formula_input" not in st.session_state:
+    st.session_state.formula_input = st.session_state.formula
 
-# Subscript input
-st.write("Add subscript to a parameter:")
-parameters = get_parameters(st.session_state.formula)
-if parameters:
-    selected_param = st.selectbox("Select parameter to subscript:", parameters)
-    subscript_input = st.text_input("Enter subscript (e.g., 1, oil, gas)", key="subscript_input")
-    if st.button("Apply Subscript", key="apply_subscript"):
-        add_subscript(subscript_input, selected_param)
-else:
-    st.write("No parameters found in formula.")
+# Formula input - must be before any modifications
+formula_input = st.text_input(
+    "Enter formula (e.g., x^2 + sqrt(y))", 
+    value=st.session_state.formula_input,
+    key="formula_input",
+    on_change=on_formula_change,
+    help="Type your formula here. Use ^ for exponents, _ for subscripts (after applying via button)"
+)
 
-# Reset button
-if st.button("Reset Formula"):
+# Update formula from input
+st.session_state.formula = formula_input
+
+# Update LaTeX when formula changes
+if st.session_state.formula != st.session_state.last_valid_formula:
+    update_latex()
+
+# Reset button - place before subscript section
+if st.button("Reset Formula", key="reset"):
     st.session_state.formula = ""
+    st.session_state.formula_input = ""
     st.session_state.latex = ""
-    st.session_state.temp_formula = ""
+    st.session_state.last_valid_formula = ""
     st.session_state.subscript_trigger = False
     st.rerun()
 
-# Symbol selection
-st.write("Math tools:")
-tab_names = ["Basic", "Brackets", "Trigonometry", "Hyperbolic", "Calculus", "Constants", "Greek", "Engineering", "Petroleum"]
+# Subscript input section
+st.write("**Add subscript to a parameter:**")
+parameters = get_parameters(st.session_state.formula)
+col1, col2, col3 = st.columns([1, 2, 1])
+
+with col1:
+    if parameters:
+        st.session_state.selected_param = st.selectbox(
+            "Select parameter:", 
+            parameters, 
+            key="param_select",
+            index=0 if parameters else None
+        )
+    else:
+        st.write("No parameters")
+
+with col2:
+    st.session_state.subscript_input = st.text_input(
+        "Enter subscript (e.g., 1, oil, gas)", 
+        key="subscript_input",
+        placeholder="Type subscript here"
+    )
+
+with col3:
+    if st.button("Apply Subscript", key="apply_subscript_btn", on_click=on_apply_subscript):
+        pass  # Callback handles the logic
+
+if not parameters:
+    st.info("Enter a formula with parameters (like x, y, etc.) to enable subscripting.")
+
+# Symbol selection tabs
+st.write("**Math tools:**")
+tab_names = ["Basic", "Brackets", "Trigonometry", "Hyperbolic", "Calculus", "Constants", "Greek"]
 tabs = st.tabs(tab_names)
 
-# Define symbol options for radio buttons
-symbols_basic = [
-    ("√", "sqrt()"), ("log", "log()"), ("exp", "exp()"),
-    ("÷", "/"), ("×", "*"), ("^", "^"), ("_", "_"), ("+", "+"), ("-", "-")
-]
-symbols_brackets = [
-    ("(", "("), (")", ")"), ("[", "["), ("]", "]"), ("{", "{"), ("}", "}")
-]
-symbols_trig = [
-    ("sin", "sin()"), ("cos", "cos()"), ("tan", "tan()"), ("cot", "cot()"),
-    ("sec", "sec()"), ("csc", "csc()"), ("asin", "asin()"), ("acos", "acos()"), ("atan", "atan()")
-]
-symbols_hyperbolic = [
-    ("sinh", "sinh()"), ("cosh", "cosh()"), ("tanh", "tanh()")
-]
-symbols_calculus = [
-    ("∫", "Integral(, x)"), ("d/dx", "Derivative(, x)"),
-    ("∑", "Sum(, (n, 0, oo))"), ("lim", "Limit(, x, 0)")
-]
-symbols_constants = [
-    ("π", "pi"), ("e", "e"), ("∞", "oo")
-]
-symbols_greek = [
-    ("α", "alpha"), ("β", "beta"), ("γ", "gamma"), ("δ", "delta"), ("Δ", "Delta"),
-    ("ε", "epsilon"), ("ζ", "zeta"), ("η", "eta"), ("θ", "theta"), ("Θ", "Theta"),
-    ("ι", "iota"), ("κ", "kappa"), ("λ", "lambda"), ("Λ", "Lambda"), ("μ", "mu"),
-    ("ν", "nu"), ("ξ", "xi"), ("π", "pi"), ("ρ", "rho"), ("σ", "sigma"),
-    ("Σ", "Sigma"), ("τ", "tau"), ("φ", "phi"), ("Φ", "Phi"), ("ω", "omega"), ("Ω", "Omega")
-]
-symbols_engineering = [
-    ("Ω (ohm)", "Omega"), ("µ (micro)", "mu"), ("° (degree)", "degree"),
-    ("≈", "approx"), ("≠", "ne"), ("≥", "ge"), ("≤", "le")
-]
-symbols_petroleum = [
-    ("φ (porosity)", "phi"), ("κ (permeability)", "kappa"), ("μ (viscosity)", "mu"),
-    ("ρ (density)", "rho"), ("P (pressure)", "P"), ("Q (flow rate)", "Q")
-]
+symbol_lists = {
+    "Basic": [
+        ("√", "sqrt()"), ("log", "log()"), ("exp", "exp()"),
+        ("÷", "/"), ("×", "*"), ("^", "^"), ("+", "+"), ("-", "-")
+    ],
+    "Brackets": [
+        ("(", "("), (")", ")"), ("[", "["), ("]", "]"), ("{", "{"), ("}", "}")
+    ],
+    "Trigonometry": [
+        ("sin", "sin()"), ("cos", "cos()"), ("tan", "tan()"), 
+        ("cot", "cot()"), ("sec", "sec()"), ("csc", "csc()")
+    ],
+    "Hyperbolic": [
+        ("sinh", "sinh()"), ("cosh", "cosh()"), ("tanh", "tanh()")
+    ],
+    "Calculus": [
+        ("∫", "Integral(x, (t, 0, x))"), ("d/dx", "Derivative(x, x)"),
+        ("∑", "Sum(n, (n, 0, oo))"), ("lim", "Limit(x, x, 0)")
+    ],
+    "Constants": [
+        ("π", "pi"), ("e", "e"), ("∞", "oo")
+    ],
+    "Greek": [
+        ("α", "alpha"), ("β", "beta"), ("γ", "gamma"), ("δ", "delta"),
+        ("φ", "phi"), ("κ", "kappa"), ("μ", "mu"), ("θ", "theta"), ("λ", "lambda"), ("ω", "omega")
+    ]
+}
 
-# Map tabs to symbol lists
-symbol_lists = [
-    symbols_basic, symbols_brackets, symbols_trig, symbols_hyperbolic,
-    symbols_calculus, symbols_constants, symbols_greek, symbols_engineering, symbols_petroleum
-]
-
-# Display radio buttons in each tab
 for idx, tab in enumerate(tabs):
+    tab_name = tab_names[idx]
     with tab:
-        selected_symbol = st.radio(
-            f"Select a {tab_names[idx].lower()} symbol/function:",
-            options=[label for label, _ in symbol_lists[idx]],
-            key=f"radio_{tab_names[idx].lower()}_{idx}",
-            horizontal=True
-        )
-        if selected_symbol:
-            for label, text in symbol_lists[idx]:
-                if label == selected_symbol:
-                    st.button(f"Insert {label}", key=f"btn_{tab_names[idx].lower()}_{text}_{idx}", on_click=partial(append_to_formula, text))
-                    break
+        if symbol_lists[tab_name]:
+            symbols = symbol_lists[tab_name]
+            selected = st.radio(
+                f"Select {tab_name.lower()} symbol:",
+                options=[label for label, _ in symbols],
+                key=f"radio_{tab_name.lower()}_{idx}",
+                horizontal=True if len(symbols) <= 6 else False
+            )
+            if selected:
+                for label, text in symbols:
+                    if label == selected:
+                        st.button(
+                            f"Insert {label}", 
+                            key=f"btn_{tab_name.lower()}_{text.replace('(', '').replace(')', '')}_{idx}",
+                            on_click=partial(append_to_formula, text)
+                        )
+                        break
 
-# LaTeX output
-st.text_input("LaTeX version", key="latex")
+# LaTeX output display
+st.subheader("LaTeX Output")
+st.text_area("LaTeX code:", value=st.session_state.latex, key="latex_display", height=50)
 
 # Render LaTeX and copy buttons
-st.write("Rendered:")
-if st.session_state.latex and not st.session_state.latex.startswith("Invalid formula"):
+st.write("**Rendered Formula:**")
+if st.session_state.latex and not st.session_state.latex.startswith("Invalid") and not st.session_state.latex.startswith("Parsing"):
     try:
         st.latex(st.session_state.latex)
+        
+        # Generate and display image
         img_b64 = latex_to_image(st.session_state.latex)
-        copy_js = """
-        <script>
-        function copyLatexText() {
-            const button = document.getElementById('copy-latex-btn');
-            const latexCode = document.getElementById('latex-content').innerText;
-            navigator.clipboard.writeText(latexCode).then(() => {
-                button.style.backgroundColor = '#00ff00';
-                button.innerText = '✓ Copied!';
-                setTimeout(() => {
-                    button.style.backgroundColor = '#0f80c1';
-                    button.innerText = 'Copy LaTeX';
-                }, 1500);
-            }, (err) => {
-                console.error('Failed to copy:', err);
-                button.style.backgroundColor = '#ff0000';
-                button.innerText = 'Failed';
-                setTimeout(() => {
-                    button.style.backgroundColor = '#0f80c1';
-                    button.innerText = 'Copy LaTeX';
-                }, 1500);
-            });
-        }
-        async function copyForWord() {
-            const button = document.getElementById('copy-word-btn');
-            const latexCode = document.getElementById('latex-content').innerText;
-            try {
-                if (!window.MathJax || !window.MathJax.tex2mmlPromise) {
-                    throw new Error('MathJax not loaded');
-                }
-                const mathml = await MathJax.tex2mmlPromise(latexCode);
-                const htmlContent = `<!DOCTYPE html><html><body>${mathml}</body></html>`;
-                const blob = new Blob([htmlContent], { type: 'text/html' });
-                const clipboardItem = new ClipboardItem({ 'text/html': blob });
-                await navigator.clipboard.write([clipboardItem]);
-                button.style.backgroundColor = '#00ff00';
-                button.innerText = '✓ Copied!';
-                setTimeout(() => {
-                    button.style.backgroundColor = '#0f80c1';
-                    button.innerText = 'Copy for Word';
-                }, 1500);
-            } catch (err) {
-                console.error('Failed to copy:', err);
-                button.style.backgroundColor = '#ff0000';
-                button.innerText = 'Failed';
-                setTimeout(() => {
-                    button.style.backgroundColor = '#0f80c1';
-                    button.innerText = 'Copy for Word';
-                }, 1500);
-            }
-        }
-        async function copyAsImage() {
-            const button = document.getElementById('copy-image-btn');
-            const imgElement = document.getElementById('latex-image');
-            if (!imgElement) {
-                button.style.backgroundColor = '#ff0000';
-                button.innerText = 'No Image';
-                setTimeout(() => {
-                    button.style.backgroundColor = '#0f80c1';
-                    button.innerText = 'Copy as Image';
-                }, 1500);
-                return;
-            }
-            if (!window.ClipboardItem) {
-                button.style.backgroundColor = '#ff0000';
-                button.innerText = 'Not Supported';
-                setTimeout(() => {
-                    button.style.backgroundColor = '#0f80c1';
-                    button.innerText = 'Copy as Image';
-                }, 1500);
-                return;
-            }
-            try {
-                button.innerText = 'Copying...';
-                const response = await fetch(imgElement.src);
-                const blob = await response.blob();
-                const clipboardItem = new ClipboardItem({ 'image/png': blob });
-                await navigator.clipboard.write([clipboardItem]);
-                button.style.backgroundColor = '#00ff00';
-                button.innerText = '✓ Copied!';
-                setTimeout(() => {
-                    button.style.backgroundColor = '#0f80c1';
-                    button.innerText = 'Copy as Image';
-                }, 1500);
-            } catch (err) {
-                console.error('Failed to copy:', err);
-                button.style.backgroundColor = '#ff0000';
-                button.innerText = 'Failed';
-                setTimeout(() => {
-                    button.style.backgroundColor = '#0f80c1';
-                    button.innerText = 'Copy as Image';
-                }, 1500);
-            }
-        }
-        </script>
-        <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/3.2.2/es5/tex-mml-chtml.min.js" onerror="console.error('MathJax failed to load')"></script>
-        """
-        html_content = f"""
-        {copy_js}
-        <div id="latex-content" style="display: none;">{st.session_state.latex}</div>
-        """
         if img_b64:
-            html_content += f"""
-            <img id="latex-image" src="data:image/png;base64,{img_b64}" style="max-width: 100%; margin-top: 10px;" />
-            """
+            st.image(f"data:image/png;base64,{img_b64}", use_column_width=True)
+            
+            # Copy buttons using components
+            components.html(f"""
+            <div style="display: flex; gap: 10px; margin-top: 10px;">
+                <button onclick="navigator.clipboard.writeText('{st.session_state.latex}').then(() => alert('LaTeX copied!'))" 
+                        style="background: #0f80c1; color: white; padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer;">
+                    Copy LaTeX
+                </button>
+                <button onclick="alert('Copy image manually or use screenshot')" 
+                        style="background: #28a745; color: white; padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer;">
+                    Save Image
+                </button>
+            </div>
+            """, height=100)
         else:
-            html_content += """
-            <p style="color: #ff0000;">No image available.</p>
-            """
-        html_content += """
-        <div style="display: flex; gap: 10px; margin-top: 10px;">
-            <button id="copy-latex-btn" onclick="copyLatexText()" 
-                    style="background-color: #0f80c1; color: white; padding: 10px 20px; 
-                           border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">
-                Copy LaTeX
-            </button>
-            <button id="copy-word-btn" onclick="copyForWord()" 
-                    style="background-color: #0f80c1; color: white; padding: 10px 20px; 
-                           border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">
-                Copy for Word
-            </button>
-            <button id="copy-image-btn" onclick="copyAsImage()" 
-                    style="background-color: #0f80c1; color: white; padding: 10px 20px; 
-                           border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">
-                Copy as Image
-            </button>
-        </div>
-        <p style="font-size: 12px; color: #666; margin-top: 10px;">
-            • <strong>Copy LaTeX</strong>: Copies the LaTeX code as text<br>
-            • <strong>Copy for Word</strong>: Copies MathML for direct pasting into Word<br>
-            • <strong>Copy as Image</strong>: Copies as PNG image (works in most applications)
-        </p>
-        """
-        components.html(html_content, height=320)
+            st.warning("Could not generate image preview.")
+            
     except Exception as e:
-        st.error(f"Unable to render LaTeX: {str(e)}")
+        st.error(f"Rendering error: {str(e)}")
 else:
-    st.write("Enter a valid formula to see the LaTeX rendering.")
+    if st.session_state.formula:
+        st.info("Enter a valid formula to see LaTeX rendering.")
+    else:
+        st.info("Enter a formula above to get started.")
