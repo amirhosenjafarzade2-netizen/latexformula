@@ -132,7 +132,7 @@ st.title("Formula ↔ LaTeX Converter")
 st.text_input("Enter formula (e.g., x^2 + sqrt(y) or x_2 for subscripts)", key="formula", on_change=update_latex)
 
 st.write("Math tools:")
-cols = st.columns(9)
+cols = st.columns(10)
 buttons = [
     ("√", "sqrt()"),
     ("÷", "/"),
@@ -149,10 +149,9 @@ for i, (label, text) in enumerate(buttons):
     with cols[i]:
         st.button(label, on_click=partial(append_to_formula, text), key=f"btn_{i}")
 
-# Add a toggle switch for subscript mode
-col1, col2, col3 = st.columns([1, 2, 1])
-with col1:
-    subscript_toggle = st.toggle("🟢 Subscript Mode", value=st.session_state.subscript_mode, key="sub_toggle")
+# Add a toggle switch for subscript mode in the last column
+with cols[9]:
+    subscript_toggle = st.toggle("🔢", value=st.session_state.subscript_mode, key="sub_toggle", help="Toggle subscript parsing mode")
     if subscript_toggle != st.session_state.subscript_mode:
         st.session_state.subscript_mode = subscript_toggle
         update_latex()
