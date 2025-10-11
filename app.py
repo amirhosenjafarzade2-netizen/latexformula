@@ -18,8 +18,6 @@ if "formula" not in st.session_state:
     st.session_state.formula = ""
 if "latex" not in st.session_state:
     st.session_state.latex = ""
-if "subscript_mode" not in st.session_state:
-    st.session_state.subscript_mode = True
 
 # --- Helper: Validate formula ---
 def is_valid_formula(formula):
@@ -46,7 +44,11 @@ def update_latex():
         return
 
     try:
-        # Step 1: Find all subscript variables (e.g., x_2, var_name) only if subscript mode is ON
+        # Step 1: Find all subscript variables (e.g., x_2, var_name)
+        subscript_pattern = r'\b([a-zA-Z]+)_([a-zA-Z0-9]+)\b'
+        subscript_vars = set(re.findall(subscript_pattern, formula))
+        
+        # Step 2: Create SymPy symbols with underscores directly
         local_dict = {
             "sp": sp,
             "sqrt": sp.sqrt,
@@ -57,20 +59,15 @@ def update_latex():
             "exp": sp.exp
         }
         
-        if st.session_state.subscript_mode:
-            # More strict pattern: only match complete subscripts (letter_number or letter_letter)
-            subscript_pattern = r'\b([a-zA-Z]+)_([a-zA-Z0-9]+)\b'
-            subscript_vars = set(re.findall(subscript_pattern, formula))
-            
-            # Add subscripted variables as symbols
-            for base, subscript in subscript_vars:
-                var_name = f"{base}_{subscript}"
-                local_dict[var_name] = sp.Symbol(var_name)
+        # Add subscripted variables as symbols
+        for base, subscript in subscript_vars:
+            var_name = f"{base}_{subscript}"
+            local_dict[var_name] = sp.Symbol(var_name)
         
-        # Step 2: Replace ^ with ** but DON'T touch underscores
+        # Step 3: Replace ^ with ** but DON'T touch underscores
         parsed_formula = formula.replace("^", "**")
         
-        # Step 3: Parse the formula
+        # Step 4: Parse the formula
         transformations = standard_transformations + (
             implicit_multiplication_application,
             convert_xor
@@ -78,7 +75,7 @@ def update_latex():
 
         expr = parse_expr(parsed_formula, local_dict=local_dict, transformations=transformations)
         
-        # Step 4: Convert to LaTeX
+        # Step 5: Convert to LaTeX
         latex_str = sp.latex(expr, order='none')
 
         st.session_state.latex = latex_str
@@ -122,17 +119,13 @@ def append_to_formula(text):
     st.session_state.formula += text
     update_latex()
 
-def toggle_subscript_mode():
-    st.session_state.subscript_mode = not st.session_state.subscript_mode
-    update_latex()
-
 # --- UI ---
 st.title("Formula ↔ LaTeX Converter")
 
 st.text_input("Enter formula (e.g., x^2 + sqrt(y) or x_2 for subscripts)", key="formula", on_change=update_latex)
 
 st.write("Math tools:")
-cols = st.columns(10)
+cols = st.columns(9)
 buttons = [
     ("√", "sqrt()"),
     ("÷", "/"),
@@ -141,19 +134,13 @@ buttons = [
     ("log", "log()"),
     ("×", "*"),
     ("^", "^"),
-    ("ₓ", "_"),
+    ("ₓ Sub", "_"),
     ("=", "=")
 ]
 
 for i, (label, text) in enumerate(buttons):
     with cols[i]:
-        st.button(label, on_click=partial(append_to_formula, text), key=f"btn_{i}")
-
-# Add toggle for subscript mode below the buttons
-subscript_toggle = st.toggle("Subscript Mode", value=st.session_state.subscript_mode, key="sub_toggle", help="When ON, treats _ as subscript (e.g., x_2 becomes x₂). When OFF, treats _ as regular character.")
-if subscript_toggle != st.session_state.subscript_mode:
-    st.session_state.subscript_mode = subscript_toggle
-    update_latex()
+        st.button(label, on_click=partial(append_to_formula, text))
 
 st.text_input("LaTeX version", key="latex")
 
