@@ -107,6 +107,9 @@ def update_latex():
         latex_str = re.sub(r'\\frac\{d\}\{d x\}\s*([a-zA-Z])', r'\\frac{d\1}{dx}', latex_str)
         latex_str = re.sub(r'\\frac\{d\}\{d x\}\s*\\left\(([^)]+)\\right\)', r'\\frac{d(\\1)}{dx}', latex_str)
         
+        # Reorder multiplication terms (e.g., x \cdot 2 -> 2x)
+        latex_str = re.sub(r'([a-zA-Z])\s*\\cdot\s*(\d+)', r'\2\1', latex_str)
+        
         st.session_state.latex = latex_str
     except Exception as e:
         error_msg = f"Invalid formula: {str(e)}"
