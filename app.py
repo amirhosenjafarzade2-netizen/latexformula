@@ -42,7 +42,6 @@ def insert_at_cursor(text):
 # --- Function: Update cursor position ---
 def update_cursor_pos():
     try:
-        # Streamlit doesn't provide direct cursor position; approximate using input length
         st.session_state.cursor_pos = len(st.session_state.formula)
     except:
         st.session_state.cursor_pos = 0
@@ -62,7 +61,7 @@ def update_latex():
         return
 
     try:
-        # Step 1: Define local dictionary with all symbols
+        # Step 1: Define local dictionary with all symbols using proper LaTeX
         local_dict = {
             "sp": sp,
             "sqrt": sp.sqrt,
@@ -87,56 +86,67 @@ def update_latex():
             "oo": sp.oo,
             "pi": sp.pi,
             "e": sp.E,
-            "phi": sp.Symbol('phi'),
-            "kappa": sp.Symbol('kappa'),
-            "mu": sp.Symbol('mu'),
-            "alpha": sp.Symbol('alpha'),
-            "beta": sp.Symbol('beta'),
-            "gamma": sp.Symbol('gamma'),
-            "delta": sp.Symbol('delta'),
-            "Delta": sp.Symbol('Delta'),
-            "epsilon": sp.Symbol('epsilon'),
-            "zeta": sp.Symbol('zeta'),
-            "eta": sp.Symbol('eta'),
-            "theta": sp.Symbol('theta'),
-            "Theta": sp.Symbol('Theta'),
-            "iota": sp.Symbol('iota'),
-            "lambda": sp.Symbol('lambda'),
-            "Lambda": sp.Symbol('Lambda'),
-            "nu": sp.Symbol('nu'),
-            "xi": sp.Symbol('xi'),
-            "rho": sp.Symbol('rho'),
-            "sigma": sp.Symbol('sigma'),
-            "Sigma": sp.Symbol('Sigma'),
-            "tau": sp.Symbol('tau'),
-            "Phi": sp.Symbol('Phi'),
-            "omega": sp.Symbol('omega'),
-            "Omega": sp.Symbol('Omega'),
-            "degree": sp.Symbol('degree'),
-            "approx": sp.Symbol('approx'),
-            "ne": sp.Symbol('ne'),
-            "ge": sp.Symbol('ge'),
-            "le": sp.Symbol('le'),
+            "phi": sp.Symbol(r'\phi'),
+            "kappa": sp.Symbol(r'\kappa'),
+            "mu": sp.Symbol(r'\mu'),
+            "alpha": sp.Symbol(r'\alpha'),
+            "beta": sp.Symbol(r'\beta'),
+            "gamma": sp.Symbol(r'\gamma'),
+            "delta": sp.Symbol(r'\delta'),
+            "Delta": sp.Symbol(r'\Delta'),
+            "epsilon": sp.Symbol(r'\epsilon'),
+            "zeta": sp.Symbol(r'\zeta'),
+            "eta": sp.Symbol(r'\eta'),
+            "theta": sp.Symbol(r'\theta'),
+            "Theta": sp.Symbol(r'\Theta'),
+            "iota": sp.Symbol(r'\iota'),
+            "lambda": sp.Symbol(r'\lambda'),
+            "Lambda": sp.Symbol(r'\Lambda'),
+            "nu": sp.Symbol(r'\nu'),
+            "xi": sp.Symbol(r'\xi'),
+            "rho": sp.Symbol(r'\rho'),
+            "sigma": sp.Symbol(r'\sigma'),
+            "Sigma": sp.Symbol(r'\Sigma'),
+            "tau": sp.Symbol(r'\tau'),
+            "Phi": sp.Symbol(r'\Phi'),
+            "omega": sp.Symbol(r'\omega'),
+            "Omega": sp.Symbol(r'\Omega'),
+            "degree": sp.Symbol(r'\degree'),
+            "approx": sp.Symbol(r'\approx'),
+            "ne": sp.Symbol(r'\ne'),
+            "ge": sp.Symbol(r'\ge'),
+            "le": sp.Symbol(r'\le'),
             # Petroleum engineering symbols
-            "porosity": sp.Symbol('phi'),
-            "permeability": sp.Symbol('kappa'),
-            "tension": sp.Symbol('sigma_t'),
-            "shear_stress": sp.Symbol('tau_s'),
-            "shear_rate": sp.Symbol('gamma_dot')
+            "porosity": sp.Symbol(r'\phi'),
+            "permeability": sp.Symbol(r'\kappa'),
+            "viscosity": sp.Symbol(r'\mu'),
+            "density": sp.Symbol(r'\rho'),
+            "shear_rate": sp.Symbol(r'\dot{\gamma}'),
+            # Add more if needed, but simple variables like k, P, q are handled dynamically
         }
+
+        # Reserved names to avoid parsing conflicts
+        reserved = ['sqrt', 'log', 'sin', 'cos', 'tan', 'cot', 'sec', 'csc', 'asin', 'acos', 'atan',
+                    'sinh', 'cosh', 'tanh', 'exp', 'Sum', 'Limit', 'Integral', 'Derivative', 'oo', 'pi', 'e']
 
         # Step 2: Handle subscripted variables
         subscript_pattern = r'\b([a-zA-Z]+)_([a-zA-Z0-9]+)\b'
         subscript_vars = set(re.findall(subscript_pattern, formula))
         for base, subscript in subscript_vars:
             var_name = f"{base}_{subscript}"
-            if var_name not in local_dict:
+            if var_name not in local_dict and base not in reserved:
                 local_dict[var_name] = sp.Symbol(var_name)
 
-        # Step 3: Replace ^ with ** for exponentiation
+        # Step 3: Detect variables (for dynamic symbol addition if needed)
+        variables = re.findall(r'\b[a-zA-Z]\w*(?:_\w+)?\b', formula)
+        for var in variables:
+            if var not in local_dict and var not in reserved:
+                local_dict[var] = sp.Symbol(var)
+
+        # Step 4: Replace ^ with ** for exponentiation
         parsed_formula = formula.replace("^", "**")
 
-        # Step 4: Detect if there's an '=' (equation)
+        # Step 5: Detect if there's an '=' (equation)
         if "=" in parsed_formula:
             lhs, rhs = parsed_formula.split("=", 1)
             transformations = standard_transformations + (
@@ -153,7 +163,7 @@ def update_latex():
             )
             expr = parse_expr(parsed_formula, local_dict=local_dict, transformations=transformations)
 
-        # Step 5: Convert to LaTeX
+        # Step 6: Convert to LaTeX
         latex_str = sp.latex(expr, order='none')
         st.session_state.latex = latex_str
 
@@ -221,12 +231,12 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # Text input with cursor tracking
-st.text_input("Enter formula (e.g., x^2 + sqrt(y_1) or porosity = kappa)", key="formula", on_change=update_cursor_pos)
+st.text_input("Enter formula (e.g., porosity = kappa * x^2)", key="formula", on_change=update_cursor_pos)
 
 # Tabbed interface for symbol groups
 tab1, tab2, tab3, tab4 = st.tabs(["Mathematical Symbols", "Greek Characters", "Engineering Symbols", "Petroleum Engineering"])
 
-# Button groups
+# Button groups with additions
 button_groups = {
     "Mathematical Symbols": [
         ("√", "sqrt()"),
@@ -253,7 +263,8 @@ button_groups = {
         ("tanh", "tanh()"),
         ("exp", "exp()"),
         ("π", "pi"),
-        ("e", "e")
+        ("e", "e"),
+        ("∞", "oo"),  # Added infinity
     ],
     "Greek Characters": [
         ("α", "alpha"),
@@ -291,14 +302,29 @@ button_groups = {
         ("σ", "sigma"),
         ("τ", "tau"),
         ("E", "E"),
-        ("μ", "mu")
+        ("μ", "mu"),
+        ("ν (Poisson's ratio)", "nu"),  # Added
+        ("G (shear modulus)", "G"),  # Added
     ],
     "Petroleum Engineering": [
-        ("φ (porosity)", "porosity"),
-        ("κ (permeability)", "permeability"),
-        ("σ_t (tension)", "tension"),
-        ("τ_s (shear stress)", "shear_stress"),
-        ("γ̇ (shear rate)", "shear_rate")
+        ("φ (porosity)", "phi"),
+        ("κ (permeability)", "kappa"),
+        ("σ (tension)", "sigma"),
+        ("τ (shear stress)", "tau"),
+        ("γ̇ (shear rate)", "shear_rate"),
+        ("k (permeability)", "k"),  # Added
+        ("μ (viscosity)", "mu"),  # Added
+        ("ρ (density)", "rho"),  # Added
+        ("γ (specific gravity)", "gamma"),  # Added
+        ("P (pressure)", "P"),  # Added
+        ("q (flow rate)", "q"),  # Added
+        ("v (velocity)", "v"),  # Added
+        ("S (saturation)", "S"),  # Added
+        ("c (compressibility)", "c"),  # Added
+        ("B (FVF)", "B"),  # Added
+        ("z (deviation factor)", "z"),  # Added
+        ("R (gas-oil ratio)", "R"),  # Added
+        ("h (net pay)", "h"),  # Added
     ]
 }
 
@@ -325,7 +351,7 @@ if st.session_state.latex and not st.session_state.latex.startswith("Invalid for
         st.latex(st.session_state.latex)
         img_b64 = latex_to_image(st.session_state.latex)
 
-        # JS + HTML block for clipboard functionality
+        # JS + HTML block for clipboard functionality (unchanged)
         copy_js = """
         <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/3.2.2/es5/tex-mml-chtml.min.js"></script>
         <script>
