@@ -20,6 +20,8 @@ if "temp_formula" not in st.session_state:
     st.session_state.temp_formula = ""
 if "subscript_trigger" not in st.session_state:
     st.session_state.subscript_trigger = False
+if "manual_edit" not in st.session_state:
+    st.session_state.manual_edit = False
 
 # Function to validate formula
 def is_valid_formula(formula):
@@ -98,21 +100,19 @@ def get_locals(formula):
         "ge": sp.Symbol('ge'),
         "le": sp.Symbol('le'),
     }
-    # Automatically add undefined variables as symbols, including subscripted ones
+    # Automatically add undefined variables as symbols
     variables = re.findall(r'\b[a-zA-Z]\w*(?:_\w+)?\b', formula)
     reserved = ['sqrt', 'log', 'sin', 'cos', 'tan', 'cot', 'sec', 'csc', 'asin', 'acos', 'atan',
                 'sinh', 'cosh', 'tanh', 'exp', 'Sum', 'Limit', 'Integral', 'Derivative', 'oo', 'pi', 'e']
     for var in variables:
         if var not in local_dict and var not in reserved:
-            symbol = sp.Symbol(var)
-            if '_' in var:
-                base, subscript = var.split('_', 1)
-                symbol._latex_repr = f"{base}_{{{subscript}}}"
-            local_dict[var] = symbol
+            local_dict[var] = sp.Symbol(var)
     return local_dict
 
 # Function to update LaTeX from formula
 def update_latex():
+    if st.session_state.manual_edit:
+        return  # Do not overwrite LaTeX in manual edit mode
     if st.session_state.subscript_trigger:
         return  # Skip update during subscript application
     formula = st.session_state.formula
@@ -190,25 +190,22 @@ def add_subscript(subscript, selected_param):
     if not formula.strip():
         st.error("Formula is empty. Enter a parameter to subscript.")
         return
-    # Replace the selected parameter with subscripted version
-    # Find the last occurrence to avoid replacing earlier ones if duplicates
-    param_positions = [m.start() for m in re.finditer(r'\b' + re.escape(selected_param) + r'\b', formula)]
-    if param_positions:
-        last_pos = param_positions[-1]
-        st.session_state.subscript_trigger = True
-        new_formula = formula[:last_pos] + f"{selected_param}_{subscript}" + formula[last_pos + len(selected_param):]
-        st.session_state.temp_formula = new_formula
-        st.session_state.formula = new_formula
-        st.session_state.subscript_trigger = False
-        update_latex()
-    else:
-        st.error("Selected parameter not found in formula.")
+    # Replace all occurrences of the selected parameter with subscripted version
+    st.session_state.subscript_trigger = True
+    new_formula = re.sub(r'\b' + re.escape(selected_param) + r'\b', f"{selected_param}_{subscript}", formula)
+    st.session_state.temp_formula = new_formula
+    st.session_state.formula = new_formula
+    st.session_state.subscript_trigger = False
+    update_latex()
 
 # UI
 st.title("Formula to LaTeX Converter")
 
 # Formula input
 st.text_input("Enter formula (e.g., x^2 + sqrt(y))", key="formula", value=st.session_state.formula, on_change=update_latex)
+
+# Manual edit checkbox
+st.checkbox("Edit LaTeX manually (prevents automatic updates from formula)", key="manual_edit")
 
 # Subscript input
 st.write("Add subscript to a parameter:")
