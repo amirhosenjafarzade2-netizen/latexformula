@@ -1,6 +1,6 @@
-# app.py
 import streamlit as st
 import streamlit.components.v1 as components
+import re  # Added to fix NameError
 from utils import (is_valid_formula, get_locals, update_latex, sync_to_sympy,
                   latex_to_image, latex_to_pdf, append_to_formula, add_subscript)
 from symbols import (symbols_basic, symbols_brackets, symbols_trig, symbols_hyperbolic,
@@ -42,6 +42,7 @@ try:
     st.text_input("Enter formula (e.g., x^2 + sqrt(y) for SymPy, or x^{2} + \\sqrt{y} for LaTeX)", key="formula", on_change=update_latex)
 
     # Symbol buttons
+    st.write("Math tools:")
     tab_names = ["Basic", "Brackets", "Trigonometry", "Hyperbolic", "Calculus", "Constants", "Greek", "Engineering", "Petroleum", "Matrices", "Chemistry", "Physics"]
     tabs = st.tabs(tab_names)
 
@@ -52,24 +53,33 @@ try:
 
     for idx, tab in enumerate(tabs[:9]):  # Basic to Petroleum
         with tab:
-            symbols = symbol_lists[idx]
-            num_cols = min(5, len(symbols))
-            cols = st.columns(num_cols) if num_cols > 0 else [st]
-            for i, symbol in enumerate(symbols):
-                col_idx = i % num_cols
-                with cols[col_idx]:
-                    if st.button(symbol["label"], key=f"btn_{tab_names[idx]}_{i}"):
-                        logger.debug(f"Button clicked: {symbol['label']}")
-                        append_to_formula(symbol)
+            with st.form(key=f"symbol_form_{tab_names[idx]}"):
+                symbols = symbol_lists[idx]
+                num_cols = min(5, len(symbols))
+                cols = st.columns(num_cols) if num_cols > 0 else [st]
+                selected_symbol = None
+                for i, symbol in enumerate(symbols):
+                    col_idx = i % num_cols
+                    with cols[col_idx]:
+                        if st.form_submit_button(symbol["label"], key=f"btn_{tab_names[idx]}_{i}"):
+                            selected_symbol = symbol
+                            logger.debug(f"Button clicked: {symbol['label']}")
+                if selected_symbol:
+                    append_to_formula(selected_symbol)
+                    st.session_state.formula = st.session_state.temp_formula
+                    st.rerun()
 
     # Subscript
     parameters = re.findall(r'\b[a-zA-Z]\w*(?:_\w+)?\b', st.session_state.formula)
     if parameters:
         st.write("Add subscript to a parameter:")
-        selected_param = st.selectbox("Select parameter:", parameters, key="param_select")
-        subscript_input = st.text_input("Enter subscript (e.g., 1, oil)", key="subscript_input")
-        if st.button("Apply Subscript", key="apply_subscript"):
-            add_subscript(subscript_input, selected_param)
+        with st.form(key="subscript_form"):
+            selected_param = st.selectbox("Select parameter:", parameters, key="param_select")
+            subscript_input = st.text_input("Enter subscript (e.g., 1, oil)", key="subscript_input")
+            if st.form_submit_button("Apply Subscript", key="apply_subscript"):
+                add_subscript(subscript_input, selected_param)
+                st.session_state.formula = st.session_state.temp_formula
+                st.rerun()
 
     # Matrices
     with tabs[9]:
@@ -77,22 +87,24 @@ try:
             st.warning("Matrices are only supported in LaTeX mode.")
         else:
             with st.expander("Insert Matrix"):
-                matrix_type = st.selectbox("Matrix Type", ["pmatrix", "bmatrix", "vmatrix", "Bmatrix"], key="matrix_type")
-                rows = st.number_input("Rows", 1, 5, 2, key="matrix_rows")
-                cols = st.number_input("Cols", 1, 5, 2, key="matrix_cols")
-                elements = []
-                for i in range(rows):
-                    row = []
-                    for j in range(cols):
-                        row.append(st.text_input(f"Element [{i+1},{j+1}]", key=f"matrix_{i}_{j}"))
-                    elements.append(row)
-                if st.button("Insert Matrix", key="insert_matrix"):
-                    matrix_content = " \\\\ ".join(" & ".join(row) for row in elements if any(row))
-                    matrix = f"\\begin{{{matrix_type}}} {matrix_content} \\end{{{matrix_type}}}"
-                    st.session_state.temp_formula = st.session_state.formula + matrix
-                    st.session_state.formula = st.session_state.temp_formula
-                    update_latex()
-                    logger.debug(f"Matrix inserted: {matrix}")
+                with st.form(key="matrix_form"):
+                    matrix_type = st.selectbox("Matrix Type", ["pmatrix", "bmatrix", "vmatrix", "Bmatrix"], key="matrix_type")
+                    rows = st.number_input("Rows", 1, 5, 2, key="matrix_rows")
+                    cols = st.number_input("Cols", 1, 5, 2, key="matrix_cols")
+                    elements = []
+                    for i in range(rows):
+                        row = []
+                        for j in range(cols):
+                            row.append(st.text_input(f"Element [{i+1},{j+1}]", key=f"matrix_{i}_{j}"))
+                        elements.append(row)
+                    if st.form_submit_button("Insert Matrix", key="insert_matrix"):
+                        matrix_content = " \\\\ ".join(" & ".join(row) for row in elements if any(row))
+                        matrix = f"\\begin{{{matrix_type}}} {matrix_content} \\end{{{matrix_type}}}"
+                        st.session_state.temp_formula = st.session_state.formula + matrix
+                        st.session_state.formula = st.session_state.temp_formula
+                        update_latex()
+                        logger.debug(f"Matrix inserted: {matrix}")
+                        st.rerun()
 
     # Chemistry
     with tabs[10]:
@@ -100,21 +112,23 @@ try:
             st.warning("Chemistry notation is only supported in LaTeX mode.")
         else:
             with st.expander("Chemistry (\\ce{})"):
-                cols = st.columns(3)
-                chem = ["\\ce{H2O}", "\\ce{CO2}", "\\ce{A -> B}", "\\ce{A + B <=> C}", "\\ce{H2SO4}"]
-                for i, c in enumerate(chem):
-                    with cols[i % 3]:
-                        if st.button(c, key=f"chem_btn_{i}"):
-                            st.session_state.temp_formula = st.session_state.formula + c
-                            st.session_state.formula = st.session_state.temp_formula
-                            update_latex()
-                            logger.debug(f"Chemistry notation inserted: {c}")
-                custom_chem = st.text_input("Custom \\ce{}", key="custom_chem")
-                if st.button("Insert Custom Chemistry", key="insert_chem"):
-                    st.session_state.temp_formula = st.session_state.formula + f"\\ce{{{custom_chem}}}"
-                    st.session_state.formula = st.session_state.temp_formula
-                    update_latex()
-                    logger.debug(f"Custom chemistry inserted: \\ce{{{custom_chem}}}")
+                with st.form(key="chemistry_form"):
+                    cols = st.columns(3)
+                    chem = ["\\ce{H2O}", "\\ce{CO2}", "\\ce{A -> B}", "\\ce{A + B <=> C}", "\\ce{H2SO4}"]
+                    selected_chem = None
+                    for i, c in enumerate(chem):
+                        with cols[i % 3]:
+                            if st.form_submit_button(c, key=f"chem_btn_{i}"):
+                                selected_chem = c
+                    custom_chem = st.text_input("Custom \\ce{}", key="custom_chem")
+                    if st.form_submit_button("Insert Custom Chemistry", key="insert_chem"):
+                        selected_chem = f"\\ce{{{custom_chem}}}"
+                    if selected_chem:
+                        st.session_state.temp_formula = st.session_state.formula + selected_chem
+                        st.session_state.formula = st.session_state.temp_formula
+                        update_latex()
+                        logger.debug(f"Chemistry notation inserted: {selected_chem}")
+                        st.rerun()
 
     # Physics
     with tabs[11]:
@@ -122,23 +136,25 @@ try:
             st.warning("Physics notation is only supported in LaTeX mode.")
         else:
             with st.expander("Physics (\\dv, \\grad, etc.)"):
-                cols = st.columns(3)
-                physics = ["\\dv{f}{x}", "\\grad{\\psi}", "\\curl{\\mathbf{A}}", "\\div{\\mathbf{F}}", "\\pdv{f}{x,y}"]
-                for i, p in enumerate(physics):
-                    with cols[i % 3]:
-                        if st.button(p, key=f"physics_btn_{i}"):
-                            st.session_state.temp_formula = st.session_state.formula + p
-                            st.session_state.formula = st.session_state.temp_formula
-                            update_latex()
-                            logger.debug(f"Physics notation inserted: {p}")
-                custom_deriv = st.text_input("Custom Derivative (e.g., f,x)", placeholder="function,variable", key="custom_deriv")
-                if st.button("Insert Custom Derivative", key="insert_deriv"):
-                    if "," in custom_deriv:
-                        f, x = custom_deriv.split(",", 1)
-                        st.session_state.temp_formula = st.session_state.formula + f"\\dv{{{f}}}{{{x}}}"
+                with st.form(key="physics_form"):
+                    cols = st.columns(3)
+                    physics = ["\\dv{f}{x}", "\\grad{\\psi}", "\\curl{\\mathbf{A}}", "\\div{\\mathbf{F}}", "\\pdv{f}{x,y}"]
+                    selected_physics = None
+                    for i, p in enumerate(physics):
+                        with cols[i % 3]:
+                            if st.form_submit_button(p, key=f"physics_btn_{i}"):
+                                selected_physics = p
+                    custom_deriv = st.text_input("Custom Derivative (e.g., f,x)", placeholder="function,variable", key="custom_deriv")
+                    if st.form_submit_button("Insert Custom Derivative", key="insert_deriv"):
+                        if "," in custom_deriv:
+                            f, x = custom_deriv.split(",", 1)
+                            selected_physics = f"\\dv{{{f}}}{{{x}}}"
+                    if selected_physics:
+                        st.session_state.temp_formula = st.session_state.formula + selected_physics
                         st.session_state.formula = st.session_state.temp_formula
                         update_latex()
-                        logger.debug(f"Custom derivative inserted: \\dv{{{f}}}{{{x}}}")
+                        logger.debug(f"Physics notation inserted: {selected_physics}")
+                        st.rerun()
 
     # Output
     st.text_area("LaTeX Output:", st.session_state.latex, key="latex_out", height=100)
@@ -298,9 +314,6 @@ try:
             st.session_state.history.pop(-1)
             st.rerun()
 
-except SyntaxError as e:
-    st.error(f"SyntaxError in application code: {str(e)}")
-    logger.error(f"SyntaxError: {str(e)}")
 except Exception as e:
     st.error(f"Unexpected error: {str(e)}")
     logger.error(f"Unexpected error: {str(e)}")
