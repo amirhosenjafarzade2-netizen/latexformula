@@ -18,6 +18,8 @@ if "formula" not in st.session_state:
     st.session_state.formula = ""
 if "latex" not in st.session_state:
     st.session_state.latex = ""
+if "cursor_pos" not in st.session_state:
+    st.session_state.cursor_pos = 0
 
 # --- Helper: Validate formula ---
 def is_valid_formula(formula):
@@ -29,6 +31,22 @@ def is_valid_formula(formula):
         return False, "Unbalanced parentheses."
     return True, ""
 
+# --- Function: Insert text at cursor position ---
+def insert_at_cursor(text):
+    cursor_pos = st.session_state.cursor_pos
+    formula = st.session_state.formula
+    st.session_state.formula = formula[:cursor_pos] + text + formula[cursor_pos:]
+    st.session_state.cursor_pos = cursor_pos + len(text)
+    update_latex()
+
+# --- Function: Update cursor position ---
+def update_cursor_pos():
+    try:
+        # Streamlit doesn't provide direct cursor position; approximate using input length
+        st.session_state.cursor_pos = len(st.session_state.formula)
+    except:
+        st.session_state.cursor_pos = 0
+
 # --- Function: Update LaTeX from formula ---
 def update_latex():
     formula = st.session_state.formula.strip()
@@ -39,14 +57,12 @@ def update_latex():
         return
 
     # Auto-detect if already LaTeX
-    if formula.startswith("\\") or re.search(r"\\frac|\\int|\\sqrt|\\left", formula):
+    if formula.startswith("\\") or re.search(r"\\frac|\\int|\\sqrt|\\left|\\sum", formula):
         st.session_state.latex = formula
         return
 
     try:
-        # Step 1: Handle subscripted variables
-        subscript_pattern = r'\b([a-zA-Z]+)_([a-zA-Z0-9]+)\b'
-        subscript_vars = set(re.findall(subscript_pattern, formula))
+        # Step 1: Define local dictionary with all symbols
         local_dict = {
             "sp": sp,
             "sqrt": sp.sqrt,
@@ -54,27 +70,81 @@ def update_latex():
             "sin": sp.sin,
             "cos": sp.cos,
             "tan": sp.tan,
-            "exp": sp.exp
+            "cot": sp.cot,
+            "sec": sp.sec,
+            "csc": sp.csc,
+            "asin": sp.asin,
+            "acos": sp.acos,
+            "atan": sp.atan,
+            "sinh": sp.sinh,
+            "cosh": sp.cosh,
+            "tanh": sp.tanh,
+            "exp": sp.exp,
+            "Sum": sp.Sum,
+            "Limit": sp.Limit,
+            "Integral": sp.Integral,
+            "Derivative": sp.Derivative,
+            "oo": sp.oo,
+            "pi": sp.pi,
+            "e": sp.E,
+            "phi": sp.Symbol('phi'),
+            "kappa": sp.Symbol('kappa'),
+            "mu": sp.Symbol('mu'),
+            "alpha": sp.Symbol('alpha'),
+            "beta": sp.Symbol('beta'),
+            "gamma": sp.Symbol('gamma'),
+            "delta": sp.Symbol('delta'),
+            "Delta": sp.Symbol('Delta'),
+            "epsilon": sp.Symbol('epsilon'),
+            "zeta": sp.Symbol('zeta'),
+            "eta": sp.Symbol('eta'),
+            "theta": sp.Symbol('theta'),
+            "Theta": sp.Symbol('Theta'),
+            "iota": sp.Symbol('iota'),
+            "lambda": sp.Symbol('lambda'),
+            "Lambda": sp.Symbol('Lambda'),
+            "nu": sp.Symbol('nu'),
+            "xi": sp.Symbol('xi'),
+            "rho": sp.Symbol('rho'),
+            "sigma": sp.Symbol('sigma'),
+            "Sigma": sp.Symbol('Sigma'),
+            "tau": sp.Symbol('tau'),
+            "Phi": sp.Symbol('Phi'),
+            "omega": sp.Symbol('omega'),
+            "Omega": sp.Symbol('Omega'),
+            "degree": sp.Symbol('degree'),
+            "approx": sp.Symbol('approx'),
+            "ne": sp.Symbol('ne'),
+            "ge": sp.Symbol('ge'),
+            "le": sp.Symbol('le'),
+            # Petroleum engineering symbols
+            "porosity": sp.Symbol('phi'),
+            "permeability": sp.Symbol('kappa'),
+            "tension": sp.Symbol('sigma_t'),
+            "shear_stress": sp.Symbol('tau_s'),
+            "shear_rate": sp.Symbol('gamma_dot')
         }
+
+        # Step 2: Handle subscripted variables
+        subscript_pattern = r'\b([a-zA-Z]+)_([a-zA-Z0-9]+)\b'
+        subscript_vars = set(re.findall(subscript_pattern, formula))
         for base, subscript in subscript_vars:
             var_name = f"{base}_{subscript}"
-            local_dict[var_name] = sp.Symbol(var_name)
+            if var_name not in local_dict:
+                local_dict[var_name] = sp.Symbol(var_name)
 
-        # Step 2: Replace ^ with ** for exponentiation
+        # Step 3: Replace ^ with ** for exponentiation
         parsed_formula = formula.replace("^", "**")
 
-        # Step 3: Detect if there's an '=' (equation)
+        # Step 4: Detect if there's an '=' (equation)
         if "=" in parsed_formula:
             lhs, rhs = parsed_formula.split("=", 1)
-
             transformations = standard_transformations + (
                 implicit_multiplication_application,
                 convert_xor
             )
-
             lhs_expr = parse_expr(lhs.strip(), local_dict=local_dict, transformations=transformations)
             rhs_expr = parse_expr(rhs.strip(), local_dict=local_dict, transformations=transformations)
-
             expr = sp.Eq(lhs_expr, rhs_expr)
         else:
             transformations = standard_transformations + (
@@ -83,7 +153,7 @@ def update_latex():
             )
             expr = parse_expr(parsed_formula, local_dict=local_dict, transformations=transformations)
 
-        # Step 4: Convert to LaTeX
+        # Step 5: Convert to LaTeX
         latex_str = sp.latex(expr, order='none')
         st.session_state.latex = latex_str
 
@@ -122,35 +192,131 @@ def latex_to_image(latex_str):
         st.error(f"Image generation error: {str(e)}")
         return None
 
-# --- Function: Append text to formula ---
-def append_to_formula(text):
-    st.session_state.formula += text
-    update_latex()
-
 # --- UI ---
 st.title("Formula ↔ LaTeX Converter")
 
-st.text_input("Enter formula (e.g., x^2 + sqrt(y) or x_2 for subscripts)", key="formula", on_change=update_latex)
+# Custom CSS for better styling
+st.markdown("""
+    <style>
+    .symbol-button {
+        background-color: #f0f2f6;
+        border: 1px solid #d1d5db;
+        border-radius: 8px;
+        padding: 8px 12px;
+        margin: 2px;
+        font-size: 14px;
+        cursor: pointer;
+    }
+    .symbol-button:hover {
+        background-color: #e5e7eb;
+    }
+    .stTabs [data-baseweb="tab"] {
+        font-size: 16px;
+        padding: 10px 20px;
+    }
+    .stTabs [data-baseweb="tab-highlight"] {
+        background-color: #0f80c1;
+    }
+    </style>
+""", unsafe_allow_html=True)
 
-st.write("Math tools:")
-cols = st.columns(9)
-buttons = [
-    ("√", "sqrt()"),
-    ("÷", "/"),
-    ("∫", "Integral(1, x)"),
-    ("d/dx", "Derivative(1, x)"),
-    ("log", "log()"),
-    ("×", "*"),
-    ("^", "^"),
-    ("ₓ Sub", "_"),
-    ("=", "=")
-]
+# Text input with cursor tracking
+st.text_input("Enter formula (e.g., x^2 + sqrt(y_1) or porosity = kappa)", key="formula", on_change=update_cursor_pos)
 
-for i, (label, text) in enumerate(buttons):
-    with cols[i]:
-        st.button(label, on_click=partial(append_to_formula, text))
+# Tabbed interface for symbol groups
+tab1, tab2, tab3, tab4 = st.tabs(["Mathematical Symbols", "Greek Characters", "Engineering Symbols", "Petroleum Engineering"])
 
-st.text_input("LaTeX version", key="latex")
+# Button groups
+button_groups = {
+    "Mathematical Symbols": [
+        ("√", "sqrt()"),
+        ("÷", "/"),
+        ("×", "*"),
+        ("^", "^"),
+        ("=", "="),
+        ("∫", "Integral(1, x)"),
+        ("d/dx", "Derivative(1, x)"),
+        ("∑", "Sum(1, x)"),
+        ("lim", "Limit(1, x)"),
+        ("log", "log()"),
+        ("sin", "sin()"),
+        ("cos", "cos()"),
+        ("tan", "tan()"),
+        ("cot", "cot()"),
+        ("sec", "sec()"),
+        ("csc", "csc()"),
+        ("asin", "asin()"),
+        ("acos", "acos()"),
+        ("atan", "atan()"),
+        ("sinh", "sinh()"),
+        ("cosh", "cosh()"),
+        ("tanh", "tanh()"),
+        ("exp", "exp()"),
+        ("π", "pi"),
+        ("e", "e")
+    ],
+    "Greek Characters": [
+        ("α", "alpha"),
+        ("β", "beta"),
+        ("γ", "gamma"),
+        ("Γ", "Gamma"),
+        ("δ", "delta"),
+        ("Δ", "Delta"),
+        ("ε", "epsilon"),
+        ("ζ", "zeta"),
+        ("η", "eta"),
+        ("θ", "theta"),
+        ("Θ", "Theta"),
+        ("ι", "iota"),
+        ("λ", "lambda"),
+        ("Λ", "Lambda"),
+        ("μ", "mu"),
+        ("ν", "nu"),
+        ("ξ", "xi"),
+        ("ρ", "rho"),
+        ("σ", "sigma"),
+        ("Σ", "Sigma"),
+        ("τ", "tau"),
+        ("φ", "phi"),
+        ("Φ", "Phi"),
+        ("ω", "omega"),
+        ("Ω", "Omega")
+    ],
+    "Engineering Symbols": [
+        ("°", "degree"),
+        ("≈", "approx"),
+        ("≠", "ne"),
+        ("≥", "ge"),
+        ("≤", "le"),
+        ("σ", "sigma"),
+        ("τ", "tau"),
+        ("E", "E"),
+        ("μ", "mu")
+    ],
+    "Petroleum Engineering": [
+        ("φ (porosity)", "porosity"),
+        ("κ (permeability)", "permeability"),
+        ("σ_t (tension)", "tension"),
+        ("τ_s (shear stress)", "shear_stress"),
+        ("γ̇ (shear rate)", "shear_rate")
+    ]
+}
+
+# Render buttons for each tab
+for tab, group_name in [(tab1, "Mathematical Symbols"), (tab2, "Greek Characters"), 
+                        (tab3, "Engineering Symbols"), (tab4, "Petroleum Engineering")]:
+    with tab:
+        cols = st.columns(5)  # 5 buttons per row
+        for i, (label, text) in enumerate(button_groups[group_name]):
+            with cols[i % 5]:
+                st.button(label, key=f"{group_name}_{i}", on_click=partial(insert_at_cursor, text), 
+                          args=None, kwargs=None, help=f"Insert {text}", 
+                          use_container_width=True, type="secondary")
+
+# Update LaTeX after button clicks
+update_latex()
+
+st.text_input("LaTeX version", key="latex", disabled=True)
 
 st.write("Rendered:")
 
@@ -159,7 +325,7 @@ if st.session_state.latex and not st.session_state.latex.startswith("Invalid for
         st.latex(st.session_state.latex)
         img_b64 = latex_to_image(st.session_state.latex)
 
-        # JS + HTML block
+        # JS + HTML block for clipboard functionality
         copy_js = """
         <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/3.2.2/es5/tex-mml-chtml.min.js"></script>
         <script>
