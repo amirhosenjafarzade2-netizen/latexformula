@@ -23,11 +23,24 @@ if "latex" not in st.session_state:
 def is_valid_formula(formula):
     if not formula.strip():
         return False, "Formula is empty."
-    if formula.strip()[-1] in ['+', '-', '*', '/', '^', '_']:
+    if formula.strip()[-1] in ['+', '-', '*', '/', '^']:
         return False, "Formula ends with an incomplete operator."
     if formula.count('(') != formula.count(')'):
         return False, "Unbalanced parentheses."
     return True, ""
+
+# --- Function: Convert subscripts to SymPy format ---
+def convert_subscripts(formula):
+    """Convert x_2 notation to SymPy Symbol('x_2') format"""
+    # Match patterns like x_2, y_10, var_name, etc.
+    pattern = r'([a-zA-Z]\w*)_(\w+)'
+    
+    def replace_subscript(match):
+        base = match.group(1)
+        subscript = match.group(2)
+        return f"Symbol('{base}_{subscript}')"
+    
+    return re.sub(pattern, replace_subscript, formula)
 
 # --- Function: Update LaTeX from formula ---
 def update_latex():
@@ -44,9 +57,13 @@ def update_latex():
         return
 
     try:
+        # Convert ^ to ** and handle subscripts
         parsed_formula = formula.replace("^", "**")
+        parsed_formula = convert_subscripts(parsed_formula)
+        
         local_dict = {
             "sp": sp,
+            "Symbol": sp.Symbol,
             "sqrt": sp.sqrt,
             "log": sp.log,
             "sin": sp.sin,
