@@ -6,6 +6,7 @@ import base64
 from io import BytesIO
 import streamlit.components.v1 as components
 import re
+import matplotlib.pyplot as plt
 
 # Initialize session state
 if "formula" not in st.session_state:
@@ -25,7 +26,7 @@ def is_valid_formula(formula):
         return False, "Formula ends with an incomplete operator."
     if st.session_state.mode == "SymPy" and ('{' in formula or '}' in formula):
         return False, "LaTeX braces {} not allowed in SymPy mode. Use _sub (e.g., x_1)."
-    incomplete_functions = ['sqrt(', 'log(', 'sin(', 'cos(', 'tan(', 'exp(']  # Simplified
+    incomplete_functions = ['sqrt(', 'log(', 'sin(', 'cos(', 'tan(', 'exp(']
     for func in incomplete_functions:
         if formula.strip().endswith(func):
             return False, f"Incomplete: {func}"
@@ -55,23 +56,22 @@ def update_latex():
         st.session_state.latex = f"Parse error: {str(e)}"
         st.error(str(e))
 
-# Heuristic LaTeX to SymPy (basic, inspired by editor's snippets)
+# Heuristic LaTeX to SymPy (basic)
 def sync_to_sympy():
     latex = st.session_state.latex
     if not latex or st.session_state.mode != "LaTeX":
         st.warning("Switch to LaTeX mode first.")
         return
-    # Strip common LaTeX, convert subs/sups
     sympy_approx = re.sub(r'([a-zA-Z])_\{([^}]+)\}', r'\1_\2', latex)
     sympy_approx = re.sub(r'\^(\{?)([^}]+)(\}?)', r'^\2', sympy_approx)
-    sympy_approx = re.sub(r'\\frac\{([^}]+)\}\{([^}]+)\}', r'(\1)/(\2)', sympy_approx)  # Fractions
+    sympy_approx = re.sub(r'\\frac\{([^}]+)\}\{([^}]+)\}', r'(\1)/(\2)', sympy_approx)
     sympy_approx = re.sub(r'\\sqrt\{([^}]+)\}', r'sqrt(\1)', sympy_approx)
-    sympy_approx = re.sub(r'\\sin\{([^}]+)\}', r'sin(\1)', sympy_approx)  # Etc. for functions
+    sympy_approx = re.sub(r'\\sin\{([^}]+)\}', r'sin(\1)', sympy_approx)
     st.session_state.formula = sympy_approx
     st.session_state.mode = "SymPy"
     st.rerun()
 
-# LaTeX to image (fallback, but prefer MathJax)
+# LaTeX to image (fallback)
 @lru_cache(maxsize=100)
 def latex_to_image(latex_str):
     try:
@@ -92,7 +92,7 @@ def append_text(text):
     if st.session_state.mode == "LaTeX":
         st.session_state.formula += text
     else:
-        st.session_state.formula += text.replace('_{}', '_')  # Adapt for SymPy
+        st.session_state.formula += text.replace('_{}', '_')
     update_latex()
 
 # UI
@@ -107,7 +107,7 @@ with col2:
 st.text_input("Input (SymPy or LaTeX):", key="formula", on_change=update_latex)
 st.checkbox("Manual edit (lock auto-update)", key="manual_edit")
 
-# Inspired toolbar: Dropdowns like the editor
+# Toolbar: Dropdowns
 col1, col2, col3 = st.columns(3)
 with col1:
     func = st.selectbox("Functions", ["", "\\sin", "\\cos", "\\tan", "\\log", "\\exp", "\\sqrt"])
@@ -119,17 +119,17 @@ with col3:
     size = st.selectbox("Size", ["", "\\tiny", "\\small", "\\large", "\\huge"])
     if size: append_text(size)
 
-# Tabs for symbols (expanded with editor's categories)
+# Tabs for symbols
 tab_names = ["Basic", "Greek", "Trig", "Calculus", "Matrices", "Chemistry", "Physics"]
 tabs = st.tabs(tab_names)
 
-# Basic symbols (like editor buttons)
+# Basic symbols
 with tabs[0]:
-    symbols = {"+": "+", "-": "-", "*": "\\times", "/": "\\div", "^": "^{}", "_": "_{}"}  # Subscript fix
+    symbols = {"+": "+", "-": "-", "*": "\\times", "/": "\\div", "^": "^{}", "_": "_{}"}
     for label, text in symbols.items():
         if st.button(label): append_text(text)
 
-# Greek (direct LaTeX)
+# Greek
 with tabs[1]:
     greek = ["\\alpha", "\\beta", "\\gamma", "\\delta", "\\theta", "\\pi", "\\sigma", "\\phi"]
     cols = st.columns(4)
@@ -137,31 +137,32 @@ with tabs[1]:
         with cols[i%4]:
             if st.button(g): append_text(g)
 
-# Trig, etc. (snippets)
+# Trig
 with tabs[2]:
     if st.button("\\sin{}"): append_text("\\sin{}")
     if st.button("\\cos{}"): append_text("\\cos{}")
 
+# Calculus
 with tabs[3]:
     if st.button("\\int_a^b"): append_text("\\int_a^b f(x) \\, dx")
     if st.button("\\frac{}{}"): append_text("\\frac{}{}")
 
-# Matrices modal-like expander
+# Matrices
 with tabs[4]:
-    with st.expander("Insert Matrix (like editor)"):
+    with st.expander("Insert Matrix"):
         rows = st.number_input("Rows", 1, 5, 2)
         cols = st.number_input("Cols", 1, 5, 2)
         if st.button("Insert pmatrix"):
-            matrix = "\\begin{pmatrix} & \\\\ & \\end{pmatrix}"  # Placeholder, expand for full
+            matrix = "\\begin{pmatrix} & \\\\ & \\end{pmatrix}"
             append_text(matrix)
 
-# Chemistry (mhchem like editor)
+# Chemistry
 with tabs[5]:
     with st.expander("Chemistry (\\ce{})"):
         if st.button("\\ce{H2O}"): append_text("\\ce{H2O}")
         if st.button("\\ce{A -> B}"): append_text("\\ce{A -> B}")
 
-# Physics (physics pkg like editor)
+# Physics
 with tabs[6]:
     with st.expander("Physics (\\dv, etc.)"):
         if st.button("\\dv{f}{x}"): append_text("\\dv{f}{x}")
@@ -174,22 +175,27 @@ st.write("Preview:")
 if st.session_state.latex and not st.session_state.latex.startswith("Invalid"):
     st.latex(st.session_state.latex)
     
-    # MathJax component (like editor)
+    # MathJax component
     components.html(f"""
     <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
     <div id="mathjax-preview">$${st.session_state.latex}$</div>
     <script>MathJax.typeset();</script>
     """, height=100)
     
-    # Copy buttons (enhanced)
+    # Copy buttons (corrected)
     col1, col2, col3 = st.columns(3)
-    with col1: if st.button("Copy LaTeX"): st.code(st.session_state.latex)
-    with col2: if st.button("Copy for Word"): st.info("Use MathML: " + st.session_state.latex.replace('\\', ''))
+    with col1:
+        if st.button("Copy LaTeX"):
+            st.code(st.session_state.latex)
+    with col2:
+        if st.button("Copy for Word"):
+            st.info("Use MathML: " + st.session_state.latex.replace('\\', ''))
     with col3:
         img_b64 = latex_to_image(st.session_state.latex)
         if img_b64:
             st.image(f"data:image/png;base64,{img_b64}")
-            if st.button("Copy Image"): st.success("Image copied! (simulate)")
+            if st.button("Copy Image"):
+                st.success("Image copied! (simulate)")
 else:
     st.info("Enter valid input.")
 
