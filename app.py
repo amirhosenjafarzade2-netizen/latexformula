@@ -71,7 +71,7 @@ def reorder_multiplication(expr):
 
 # Function to update LaTeX from formula
 def update_latex():
-    formula = st.session_state.formula
+    formula = st.session_state.formula.strip()  # Sanitize input by stripping whitespace
     valid, error_msg = is_valid_formula(formula)
     if not valid:
         st.session_state.latex = f"Invalid formula: {error_msg}"
@@ -95,6 +95,9 @@ def update_latex():
                                 lambda m: 'sp.Derivative(' + (m.group(1).strip() if m.group(1).strip() else '1') + ', x)', 
                                 parsed_formula)
         
+        # Log the parsed formula for debugging
+        st.write(f"Debug: Parsed formula = {parsed_formula}")
+        
         # Define local namespace with SymPy functions and symbols
         local_dict = {
             "sp": sp,
@@ -109,7 +112,15 @@ def update_latex():
         }
         
         # Parse expression with evaluate=False to preserve structure
-        expr = sp.sympify(parsed_formula, locals=local_dict, evaluate=False)
+        try:
+            expr = sp.sympify(parsed_formula, locals=local_dict, evaluate=False)
+        except Exception as parse_error:
+            # Fallback: Try parsing with evaluate=True
+            try:
+                expr = sp.sympify(parsed_formula, locals=local_dict, evaluate=True)
+                st.warning("Parsed with evaluation enabled due to initial parsing error. Some terms may be simplified.")
+            except Exception as fallback_error:
+                raise Exception(f"Parsing failed: {str(fallback_error)}")
         
         # Reorder multiplication terms
         reordered_expr = reorder_multiplication(expr)
@@ -173,7 +184,7 @@ def append_to_formula(text):
 st.title("Formula to LaTeX Converter")
 
 # First entry bar: Formula input
-st.text_input("Enter formula (e.g., ((x+2)*(x+6))/((x+4)+(x/5)))", key="formula", on_change=update_latex)
+st.text_input("Enter formula (e.g., ((sqrt(x) / x +2) / 5) / ((x*2) + (x*6)))", key="formula", on_change=update_latex)
 
 # Buttons for symbols
 st.write("Math tools:")
