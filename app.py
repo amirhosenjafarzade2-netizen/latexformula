@@ -1,6 +1,5 @@
 import streamlit as st
 import sympy as sp
-import numpy as np
 from functools import partial
 import base64
 from io import BytesIO
@@ -194,7 +193,7 @@ def get_latex(formula, color_map):
 
 # Cache image generation with dynamic sizing
 @st.cache_data
-def latex_to_image(latex_str, has_colors, color_map):
+def latex_to_image(latex_str, has_colors):
     try:
         formula_length = len(latex_str)
         has_complex_structures = any(s in latex_str for s in [r'\frac', r'\sum', r'\int', r'\prod', r'\lim'])
@@ -228,35 +227,6 @@ def latex_to_image(latex_str, has_colors, color_map):
             return img_b64
     except Exception as e:
         st.error(f"Image generation error: {str(e)}")
-        return None
-
-# Plot function
-@st.cache_data
-def plot_function(expr, var='x', x_min=-10, x_max=10):
-    try:
-        var_sym = sp.Symbol(var)
-        if not expr.has(var_sym):
-            st.error(f"Expression does not contain the variable '{var}'.")
-            return None
-        func = sp.lambdify(var_sym, expr, 'numpy')
-        x_vals = np.linspace(x_min, x_max, 400)
-        y_vals = func(x_vals)
-        if not np.all(np.isfinite(y_vals)):
-            st.error("Plotting failed: Expression produces invalid values.")
-            return None
-        fig, ax = plt.subplots()
-        ax.plot(x_vals, y_vals, label=str(expr))
-        ax.set_xlabel(var)
-        ax.set_ylabel(f'f({var})')
-        ax.legend()
-        ax.grid(True)
-        buf = BytesIO()
-        plt.savefig(buf, format='png', dpi=150)
-        plt.close(fig)
-        buf.seek(0)
-        return base64.b64encode(buf.read()).decode()
-    except Exception as e:
-        st.error(f"Unable to plot: {str(e)}")
         return None
 
 # Update formula and history
@@ -484,70 +454,156 @@ with st.expander("Greek and Engineering Symbols"):
         with cols_eng[i % num_cols]:
             st.button(label, on_click=partial(append_to_formula, text), key=f"eng_{i}", help=tooltip, args={"aria-label": tooltip})
 
-# Plotting parameters
-with st.expander("Plotting Options", expanded=False):
-    col_var, col_min, col_max = st.columns(3)
-    with col_var:
-        plot_var = st.text_input("Variable", value="x", key="plot_var")
-    with col_min:
-        plot_x_min = st.number_input("X Min", value=-10.0, step=1.0, key="plot_x_min")
-    with col_max:
-        plot_x_max = st.number_input("X Max", value=10.0, step=1.0, key="plot_x_max")
-
 # LaTeX output and rendering
 st.write("LaTeX Output:")
-st.text_area("LaTeX code", value=st.session_state.latex, height=100, key="latex_output")
+st.text_area("LaTeX code", value=st.session_state.latex, height=100, key="latex_output", disabled=True)
 
+# Render the LaTeX and copy buttons
+st.write("Rendered Formula:")
 if st.session_state.latex and not st.session_state.latex.startswith("Invalid formula"):
     try:
         display_latex = st.session_state.latex
         if "\\usepackage{color}" in display_latex:
             display_latex = display_latex.replace("\\usepackage{color}\n", "")
         st.latex(display_latex)
+        
+        # Generate image version
         has_colors = hasattr(st.session_state, 'has_colors') and st.session_state.has_colors
-        img_b64 = latex_to_image(display_latex, has_colors, st.session_state.color_map)
+        img_b64 = latex_to_image(display_latex, has_colors)
+        
+        # JavaScript for clipboard operations
+        copy_js = """
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/3.2.2/es5/tex-mml-chtml.min.js"></script>
+        <script>
+        function copyLatexText() {
+            const button = document.getElementById('copy-latex-btn');
+            const latexCode = document.getElementById('latex-content').innerText;
+            navigator.clipboard.writeText(latexCode).then(() => {
+                button.style.backgroundColor = '#00ff00';
+                button.innerText = '✓ Copied!';
+                setTimeout(() => {
+                    button.style.backgroundColor = '#0f80c1';
+                    button.innerText = 'Copy LaTeX';
+                }, 1500);
+            }, (err) => {
+                console.error('Failed to copy:', err);
+                button.style.backgroundColor = '#ff0000';
+                button.innerText = 'Failed';
+                setTimeout(() => {
+                    button.style.backgroundColor = '#0f80c1';
+                    button.innerText = 'Copy LaTeX';
+                }, 1500);
+            });
+        }
+
+        async function copyForWord() {
+            const button = document.getElementById('copy-word-btn');
+            const latexCode = document.getElementById('latex-content').innerText;
+            try {
+                const mathml = await MathJax.tex2mmlPromise(latexCode);
+                const htmlContent = `<!DOCTYPE html><html><body>${mathml}</body></html>`;
+                const blob = new Blob([htmlContent], { type: 'text/html' });
+                const clipboardItem = new ClipboardItem({ 'text/html': blob });
+                await navigator.clipboard.write([clipboardItem]);
+                button.style.backgroundColor = '#00ff00';
+                button.innerText = '✓ Copied!';
+                setTimeout(() => {
+                    button.style.backgroundColor = '#0f80c1';
+                    button.innerText = 'Copy for Word';
+                }, 1500);
+            } catch (err) {
+                console.error('Failed to copy:', err);
+                button.style.backgroundColor = '#ff0000';
+                button.innerText = 'Failed';
+                setTimeout(() => {
+                    button.style.backgroundColor = '#0f80c1';
+                    button.innerText = 'Copy for Word';
+                }, 1500);
+            }
+        }
+
+        async function copyAsImage() {
+            const button = document.getElementById('copy-image-btn');
+            const imgElement = document.getElementById('latex-image');
+            if (!imgElement) {
+                button.style.backgroundColor = '#ff0000';
+                button.innerText = 'No Image';
+                setTimeout(() => {
+                    button.style.backgroundColor = '#0f80c1';
+                    button.innerText = 'Copy as Image';
+                }, 1500);
+                return;
+            }
+            try {
+                button.innerText = 'Copying...';
+                const response = await fetch(imgElement.src);
+                const blob = await response.blob();
+                const clipboardItem = new ClipboardItem({ 'image/png': blob });
+                await navigator.clipboard.write([clipboardItem]);
+                button.style.backgroundColor = '#00ff00';
+                button.innerText = '✓ Copied!';
+                setTimeout(() => {
+                    button.style.backgroundColor = '#0f80c1';
+                    button.innerText = 'Copy as Image';
+                }, 1500);
+            } catch (err) {
+                console.error('Failed to copy:', err);
+                button.style.backgroundColor = '#ff0000';
+                button.innerText = 'Failed';
+                setTimeout(() => {
+                    button.style.backgroundColor = '#0f80c1';
+                    button.innerText = 'Copy as Image';
+                }, 1500);
+            }
+        }
+        </script>
+        """
+        
+        # HTML content for buttons
+        html_content = f"""
+        {copy_js}
+        <div id="latex-content" style="display: none;">{st.session_state.latex}</div>
+        """
         if img_b64:
-            st.image(f"data:image/png;base64,{img_b64}", caption="Rendered Formula")
+            html_content += f"""
+            <img id="latex-image" src="data:image/png;base64,{img_b64}" style="max-width: 100%; margin-top: 10px;" />
+            """
+        else:
+            html_content += """
+            <p style="color: #ff0000;">No image available.</p>
+            """
+        
+        html_content += """
+        <div style="display: flex; gap: 10px; margin-top: 10px;">
+            <button id="copy-latex-btn" onclick="copyLatexText()" 
+                    style="background-color: #0f80c1; color: white; padding: 10px 20px; 
+                           border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">
+                Copy LaTeX
+            </button>
+            <button id="copy-word-btn" onclick="copyForWord()" 
+                    style="background-color: #0f80c1; color: white; padding: 10px 20px; 
+                           border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">
+                Copy for Word
+            </button>
+            <button id="copy-image-btn" onclick="copyAsImage()" 
+                    style="background-color: #0f80c1; color: white; padding: 10px 20px; 
+                           border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">
+                Copy as Image
+            </button>
+        </div>
+        <p style="font-size: 12px; color: #666; margin-top: 10px;">
+            • <strong>Copy LaTeX</strong>: Copies the LaTeX code as text<br>
+            • <strong>Copy for Word</strong>: Copies MathML for direct pasting into Word<br>
+            • <strong>Copy as Image</strong>: Copies as PNG image (works in most applications)
+        </p>
+        """
+        
+        components.html(html_content, height=320)
+        
     except Exception as e:
         st.error(f"Unable to render LaTeX: {str(e)}")
-
-# Copy buttons for Formula, LaTeX, and Image
-copy_buttons_html = """
-<div style='display:flex; justify-content:center; gap:10px; margin-top:15px;'>
-  <button onclick="copyText('formula_text')" style='padding:8px 14px; border:none; border-radius:6px; background:#2196F3; color:white; cursor:pointer;'>Copy Formula</button>
-  <button onclick="copyText('latex_text')" style='padding:8px 14px; border:none; border-radius:6px; background:#4CAF50; color:white; cursor:pointer;'>Copy LaTeX</button>
-  <button onclick="copyImage()" style='padding:8px 14px; border:none; border-radius:6px; background:#9C27B0; color:white; cursor:pointer;'>Copy Image</button>
-</div>
-
-<textarea id="formula_text" style="display:none;">{formula}</textarea>
-<textarea id="latex_text" style="display:none;">{latex}</textarea>
-
-<script>
-function copyText(id) {{
-  var text = document.getElementById(id);
-  text.style.display = 'block';
-  text.select();
-  document.execCommand('copy');
-  text.style.display = 'none';
-  alert(id === 'formula_text' ? 'Formula copied!' : 'LaTeX copied!');
-}}
-
-function copyImage() {{
-  var img = document.querySelector('img[src^="data:image/png;base64"]');
-  if (!img) {{ alert('No image found!'); return; }}
-  fetch(img.src)
-    .then(res => res.blob())
-    .then(blob => navigator.clipboard.write([new ClipboardItem({{'image/png': blob}})]))
-    .then(() => alert('Image copied!'))
-    .catch(err => alert('Copy failed: ' + err));
-}}
-</script>
-""".format(
-    formula=st.session_state.formula,
-    latex=st.session_state.latex
-)
-
-components.html(copy_buttons_html, height=120)
+else:
+    st.write("Enter a valid formula to see the LaTeX rendering.")
 
 # Example formulas
 with st.expander("Example Formulas"):
