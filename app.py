@@ -18,15 +18,19 @@ if "formula" not in st.session_state:
     st.session_state.formula = ""
 if "latex" not in st.session_state:
     st.session_state.latex = ""
+if "subscript_mode" not in st.session_state:
+    st.session_state.subscript_mode = False  # Default: off
 
 # --- Helper: Validate formula ---
 def is_valid_formula(formula):
     if not formula.strip():
         return False, "Formula is empty."
-    if formula.strip()[-1] in ['+', '-', '*', '/', '^']:
-        return False, "Formula ends with an incomplete operator."
+    if formula.strip()[-1] in ['+', '-', '*', '/', '^', '_']:
+        return False, "Formula ends with an incomplete operator or subscript."
     if formula.count('(') != formula.count(')'):
         return False, "Unbalanced parentheses."
+    if re.search(r'_\b', formula):  # Check for dangling underscore
+        return False, "Incomplete subscript (e.g., 'x_' without a subscript value)."
     return True, ""
 
 # --- Function: Update LaTeX from formula ---
@@ -59,24 +63,33 @@ def update_latex():
             "exp": sp.exp
         }
         
-        # Add subscripted variables as symbols
         for base, subscript in subscript_vars:
             var_name = f"{base}_{subscript}"
             local_dict[var_name] = sp.Symbol(var_name)
         
-        # Step 3: Replace ^ with ** but DON'T touch underscores
-        parsed_formula = formula.replace("^", "**")
-        
-        # Step 4: Parse the formula
-        transformations = standard_transformations + (
-            implicit_multiplication_application,
-            convert_xor
-        )
-
-        expr = parse_expr(parsed_formula, local_dict=local_dict, transformations=transformations)
-        
-        # Step 5: Convert to LaTeX
-        latex_str = sp.latex(expr, order='none')
+        # Step 3: Handle equations with '='
+        if '=' in formula:
+            left, right = [part.strip() for part in formula.split('=', 1)]
+            # Replace ^ with ** for SymPy parsing
+            left_parsed = left.replace("^", "**")
+            right_parsed = right.replace("^", "**")
+            
+            transformations = standard_transformations + (
+                implicit_multiplication_application,
+                convert_xor
+            )
+            
+            # Parse both sides
+            left_expr = parse_expr(left_parsed, local_dict=local_dict, transformations=transformations)
+            right_expr = parse_expr(right_parsed, local_dict=local_dict, transformations=transformations)
+            
+            # Combine into LaTeX equation
+            latex_str = f"{sp.latex(left_expr, order='none')} = {sp.latex(right_expr, order='none')}"
+        else:
+            # Original parsing for non-equations
+            parsed_formula = formula.replace("^", "**")
+            expr = parse_expr(parsed_formula, local_dict=local_dict, transformations=transformations)
+            latex_str = sp.latex(expr, order='none')
 
         st.session_state.latex = latex_str
     except Exception as e:
@@ -116,8 +129,14 @@ def latex_to_image(latex_str):
 
 # --- Function: Append text to formula ---
 def append_to_formula(text):
+    if text == "_" and not st.session_state.subscript_mode:
+        return  # Do nothing if subscript mode is off
     st.session_state.formula += text
     update_latex()
+
+# --- Function: Toggle subscript mode ---
+def toggle_subscript_mode():
+    st.session_state.subscript_mode = not st.session_state.subscript_mode
 
 # --- UI ---
 st.title("Formula ↔ LaTeX Converter")
@@ -134,13 +153,39 @@ buttons = [
     ("log", "log()"),
     ("×", "*"),
     ("^", "^"),
-    ("ₓ Sub", "_"),
+    ("ₓ Sub", "toggle_subscript"),  # Special handling for subscript
     ("=", "=")
 ]
 
+# Custom CSS for subscript button colors
+st.markdown("""
+    <style>
+    .subscript-on {
+        background-color: #00c853 !important;
+        color: white !important;
+    }
+    .subscript-off {
+        background-color: #ff1744 !important;
+        color: white !important;
+    }
+    </style>
+""", unsafe_allow_html=True)
+
 for i, (label, text) in enumerate(buttons):
     with cols[i]:
-        st.button(label, on_click=partial(append_to_formula, text))
+        if label == "ₓ Sub":
+            # Display button with dynamic class based on subscript_mode
+            button_class = "subscript-on" if st.session_state.subscript_mode else "subscript-off"
+            button_label = "ₓ Sub (ON)" if st.session_state.subscript_mode else "ₓ Sub (OFF)"
+            st.button(button_label, on_click=toggle_subscript_mode, key=f"button_{i}", help="Toggle subscript mode")
+            # Inject CSS to style this specific button
+            st.markdown(f"""
+                <script>
+                document.querySelector('button[kind="secondary"][aria-label="Toggle subscript mode"]').classList.add('{button_class}');
+                </script>
+            """, unsafe_allow_html=True)
+        else:
+            st.button(label, on_click=partial(append_to_formula, text), key=f"button_{i}")
 
 st.text_input("LaTeX version", key="latex")
 
