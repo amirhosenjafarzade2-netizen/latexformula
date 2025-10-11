@@ -441,7 +441,59 @@ with st.expander("Mathematical Symbols", expanded=True):
 with st.expander("Trigonometric Functions"):
     cols_trig = st.columns(num_cols)
     trig_buttons = [
-        ("sin Sine", "sin()", " synchronous formula input update
+        ("sin Sine", "sin()", "Insert sine"),
+        ("cos Cosine", "cos()", "Insert cosine"),
+        ("tan Tangent", "tan()", "Insert tangent"),
+        ("cot Cotangent", "cot()", "Insert cotangent"),
+        ("sec Secant", "sec()", "Insert secant"),
+        ("csc Cosecant", "csc()", "Insert cosecant"),
+        ("sin⁻¹ Arcsine", "arcsin()", "Insert arcsine"),
+        ("cos⁻¹ Arccosine", "arccos()", "Insert arccosine"),
+        ("tan⁻¹ Arctangent", "arctan()", "Insert arctangent")
+    ]
+    for i, (label, text, tooltip) in enumerate(trig_buttons):
+        with cols_trig[i % num_cols]:
+            st.button(label, on_click=partial(append_to_formula, text), key=f"trig_{i}", help=tooltip, args={"aria-label": tooltip})
+
+with st.expander("Hyperbolic Functions"):
+    cols_hyp = st.columns(min(num_cols, 3))
+    hyp_buttons = [
+        ("sinh Sinh", "sinh()", "Insert hyperbolic sine"),
+        ("cosh Cosh", "cosh()", "Insert hyperbolic cosine"),
+        ("tanh Tanh", "tanh()", "Insert hyperbolic tangent")
+    ]
+    for i, (label, text, tooltip) in enumerate(hyp_buttons):
+        with cols_hyp[i % min(num_cols, 3)]:
+            st.button(label, on_click=partial(append_to_formula, text), key=f"hyp_{i}", help=tooltip, args={"aria-label": tooltip})
+
+with st.expander("Greek and Engineering Symbols"):
+    cols_eng = st.columns(num_cols)
+    eng_buttons = [
+        ("α Alpha", "alpha", "Insert alpha"),
+        ("β Beta", "beta", "Insert beta"),
+        ("γ Gamma", "gamma", "Insert gamma"),
+        ("γ̇ Gamma Dot", "dot{gamma}", "Insert gamma dot"),
+        ("δ Delta", "delta", "Insert delta"),
+        ("μ Mu", "mu", "Insert mu"),
+        ("ρ Rho", "rho", "Insert rho"),
+        ("σ Sigma", "sigma", "Insert sigma"),
+        ("τ Tau", "tau", "Insert tau"),
+        ("φ Phi", "phi", "Insert phi")
+    ]
+    for i, (label, text, tooltip) in enumerate(eng_buttons):
+        with cols_eng[i % num_cols]:
+            st.button(label, on_click=partial(append_to_formula, text), key=f"eng_{i}", help=tooltip, args={"aria-label": tooltip})
+
+# Plotting parameters
+with st.expander("Plotting Options", expanded=False):
+    col_var, col_min, col_max = st.columns(3)
+    with col_var:
+        plot_var = st.text_input("Variable", value="x", key="plot_var")
+    with col_min:
+        plot_x_min = st.number_input("X Min", value=-10.0, step=1.0, key="plot_x_min")
+    with col_max:
+        plot_x_max = st.number_input("X Max", value=10.0, step=1.0, key="plot_x_max")
+
 # LaTeX output and rendering
 st.write("LaTeX Output:")
 st.text_area("LaTeX code", value=st.session_state.latex, height=100, key="latex_output")
