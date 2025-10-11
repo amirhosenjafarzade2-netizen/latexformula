@@ -157,9 +157,8 @@ for i, (label, text) in enumerate(buttons):
 # Add a separate toggle button for subscript mode
 col1, col2, col3 = st.columns([1, 2, 1])
 with col1:
-    mode_text = "Subscript Mode: ON 🟢" if st.session_state.subscript_mode else "Subscript Mode: OFF 🔴"
-    if st.button(mode_text, key="toggle_mode"):
-        toggle_subscript_mode()
+    button_color = "🟢" if st.session_state.subscript_mode else "🔴"
+    st.button(f"{button_color} Toggle Subscript", on_click=toggle_subscript_mode, key="toggle_mode")
 
 st.text_input("LaTeX version", key="latex")
 
