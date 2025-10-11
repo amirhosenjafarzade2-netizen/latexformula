@@ -64,12 +64,12 @@ def update_latex():
         st.error(error_msg)
         return
     try:
-        # First replace ^ with ** for exponentiation
+        # Replace ^ with ** for exponentiation
         parsed_formula = formula.replace("^", "**")
         
-        # Replace square brackets with double parentheses to preserve grouping
-        # This ensures SymPy treats them as explicit grouping symbols
-        parsed_formula = parsed_formula.replace("[", "((").replace("]", "))")
+        # Mark square brackets with a special marker before parsing
+        # Replace [ with __(( and ] with ))__ to preserve them
+        parsed_formula = parsed_formula.replace("[", "__LBRACKET__").replace("]", "__RBRACKET__")
         
         # Replace log with sp.log
         parsed_formula = re.sub(r'\blog\(', 'sp.log(', parsed_formula)
@@ -81,6 +81,9 @@ def update_latex():
         parsed_formula = re.sub(r'Derivative\(\s*([^,)]*?)\s*,\s*x\s*\)', 
                                 lambda m: 'sp.Derivative(' + (m.group(1).strip() if m.group(1).strip() else '1') + ', x)', 
                                 parsed_formula)
+        
+        # Now replace the markers with parentheses
+        parsed_formula = parsed_formula.replace("__LBRACKET__", "(").replace("__RBRACKET__", ")")
         
         # Define local namespace with SymPy functions and symbols
         local_dict = {
@@ -95,11 +98,11 @@ def update_latex():
             "y": sp.Symbol('y')
         }
         
-        # Parse expression with evaluate=False to preserve structure
-        expr = sp.sympify(parsed_formula, locals=local_dict, evaluate=False)
+        # Parse expression - use rational=False to prevent fraction simplification
+        expr = sp.sympify(parsed_formula, locals=local_dict, evaluate=False, rational=False)
         
-        # Convert to LaTeX with order='none' to preserve input order
-        latex_str = sp.latex(expr, order='none')
+        # Convert to LaTeX with fold_short_frac=False
+        latex_str = sp.latex(expr, order='none', fold_short_frac=False)
         
         # Clean up LaTeX output for derivatives
         latex_str = re.sub(r'\\frac\{d\}\{d x\}\s*([a-zA-Z])', r'\\frac{d\1}{dx}', latex_str)
