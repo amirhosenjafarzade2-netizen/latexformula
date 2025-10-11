@@ -98,13 +98,17 @@ def get_locals(formula):
         "ge": sp.Symbol('ge'),
         "le": sp.Symbol('le'),
     }
-    # Automatically add undefined variables as symbols
-    variables = re.findall(r'\b[a-zA-Z]\w*\b', formula)
+    # Automatically add undefined variables as symbols, including subscripted ones
+    variables = re.findall(r'\b[a-zA-Z]\w*(?:_\w+)?\b', formula)
     reserved = ['sqrt', 'log', 'sin', 'cos', 'tan', 'cot', 'sec', 'csc', 'asin', 'acos', 'atan',
                 'sinh', 'cosh', 'tanh', 'exp', 'Sum', 'Limit', 'Integral', 'Derivative', 'oo', 'pi', 'e']
     for var in variables:
         if var not in local_dict and var not in reserved:
-            local_dict[var] = sp.Symbol(var)
+            symbol = sp.Symbol(var)
+            if '_' in var:
+                base, subscript = var.split('_', 1)
+                symbol._latex_repr = f"{base}_{{{subscript}}}"
+            local_dict[var] = symbol
     return local_dict
 
 # Function to update LaTeX from formula
@@ -172,7 +176,7 @@ def append_to_formula(text):
 
 # Function to get parameters from formula
 def get_parameters(formula):
-    return re.findall(r'\b[a-zA-Z]\w*\b', formula)
+    return re.findall(r'\b[a-zA-Z]\w*(?:_\w+)?\b', formula)
 
 # Function to add subscript to selected parameter
 def add_subscript(subscript, selected_param):
@@ -192,9 +196,9 @@ def add_subscript(subscript, selected_param):
     if param_positions:
         last_pos = param_positions[-1]
         st.session_state.subscript_trigger = True
-        new_formula = formula[:last_pos] + f"{selected_param}_{{{subscript}}}" + formula[last_pos + len(selected_param):]
+        new_formula = formula[:last_pos] + f"{selected_param}_{subscript}" + formula[last_pos + len(selected_param):]
         st.session_state.temp_formula = new_formula
-        st.session_state.formula = st.session_state.temp_formula
+        st.session_state.formula = new_formula
         st.session_state.subscript_trigger = False
         update_latex()
     else:
