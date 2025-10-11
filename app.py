@@ -55,168 +55,19 @@ def is_valid_formula(formula):
         return False, "Integral/Derivative is missing the function to integrate/differentiate."
     return True, ""
 
-def manual_to_latex(formula):
-    """Convert formula to LaTeX manually to preserve order"""
-    result = formula
-    
-    # Replace square brackets with parentheses
-    result = result.replace("[", "(").replace("]", ")")
-    
-    # Handle Integral - convert to LaTeX integral notation
-    def replace_integral(match):
-        content = match.group(1).strip()
-        if not content:
-            content = "1"
-        return f"\\int {manual_to_latex(content)} \\, dx"
-    result = re.sub(r'Integral\(\s*([^,)]*?)\s*,\s*x\s*\)', replace_integral, result)
-    
-    # Handle Derivative - convert to LaTeX derivative notation
-    def replace_derivative(match):
-        content = match.group(1).strip()
-        if not content:
-            content = "1"
-        return f"\\frac{{d}}{{dx}}\\left({manual_to_latex(content)}\\right)"
-    result = re.sub(r'Derivative\(\s*([^,)]*?)\s*,\s*x\s*\)', replace_derivative, result)
-    
-    # Handle sqrt - convert to LaTeX sqrt
-    def replace_sqrt(match):
-        content = match.group(1)
-        return f"\\sqrt{{{manual_to_latex(content)}}}"
-    result = re.sub(r'sqrt\(([^)]+)\)', replace_sqrt, result)
-    
-    # Handle log - convert to LaTeX log
-    def replace_log(match):
-        content = match.group(1)
-        return f"\\log\\left({manual_to_latex(content)}\\right)"
-    result = re.sub(r'log\(([^)]+)\)', replace_log, result)
-    
-    # Handle trigonometric functions
-    for func in ['sin', 'cos', 'tan']:
-        def replace_trig(match, f=func):
-            content = match.group(1)
-            return f"\\{f}\\left({manual_to_latex(content)}\\right)"
-        result = re.sub(f'{func}\\(([^)]+)\\)', replace_trig, result)
-    
-    # Handle exp
-    def replace_exp(match):
-        content = match.group(1)
-        return f"e^{{{manual_to_latex(content)}}}"
-    result = re.sub(r'exp\(([^)]+)\)', replace_exp, result)
-    
-    # Replace operators
-    result = result.replace("*", " ")  # Implicit multiplication
-    result = result.replace("^", "^")  # Keep exponent as is for now
-    
-    # Handle exponents - wrap in braces
-    def replace_exponent(match):
-        base = match.group(1)
-        exp = match.group(2)
-        return f"{base}^{{{exp}}}"
-    # Match pattern: something followed by ^ followed by something
-    result = re.sub(r'([a-zA-Z0-9_]+|\))\^([a-zA-Z0-9_]+|\()', replace_exponent, result)
-    
-    # Handle division to create fractions
-    result = result.replace("/", " / ")  # Add spaces for easier parsing
-    
-    return result
-
-def convert_to_latex(formula):
-    """Convert formula to LaTeX preserving input order"""
-    # Replace square brackets with parentheses
-    formula = formula.replace("[", "(").replace("]", ")")
-    
-    # Process special functions first (Integral, Derivative, sqrt, log, etc.)
-    # These need to be handled before we parse the expression tree
-    
-    # Handle Integral
-    def replace_integral(match):
-        content = match.group(1).strip()
-        if not content:
-            content = "1"
-        inner_latex = convert_to_latex(content)
-        return f"\\int {inner_latex} \\, dx"
-    formula = re.sub(r'Integral\(\s*([^,)]*?)\s*,\s*x\s*\)', replace_integral, formula)
-    
-    # Handle Derivative
-    def replace_derivative(match):
-        content = match.group(1).strip()
-        if not content:
-            content = "1"
-        inner_latex = convert_to_latex(content)
-        return f"\\frac{{d}}{{dx}}\\left({inner_latex}\\right)"
-    formula = re.sub(r'Derivative\(\s*([^,)]*?)\s*,\s*x\s*\)', replace_derivative, formula)
-    
-    # Handle sqrt
-    def replace_sqrt(match):
-        content = match.group(1)
-        inner_latex = convert_to_latex(content)
-        return f"\\sqrt{{{inner_latex}}}"
-    
-    # Process nested sqrt from innermost to outermost
-    while 'sqrt(' in formula:
-        # Find innermost sqrt (one without nested sqrt)
-        formula = re.sub(r'sqrt\(([^()]+)\)', replace_sqrt, formula)
-        # If there are still sqrt with nested parens, handle them
-        if 'sqrt(' in formula:
-            formula = re.sub(r'sqrt\(([^()]*\([^()]*\)[^()]*)\)', replace_sqrt, formula)
-    
-    # Handle log
-    def replace_log(match):
-        content = match.group(1)
-        inner_latex = convert_to_latex(content)
-        return f"\\log\\left({inner_latex}\\right)"
-    
-    while 'log(' in formula:
-        formula = re.sub(r'log\(([^()]+)\)', replace_log, formula)
-        if 'log(' in formula:
-            formula = re.sub(r'log\(([^()]*\([^()]*\)[^()]*)\)', replace_log, formula)
-    
-    # Handle exponentiation (^)
-    def replace_exponent(match):
-        base = match.group(1).strip()
-        exponent = match.group(2).strip()
-        return f"{base}^{{{exponent}}}"
-    
-    # Handle complex exponents with parentheses
-    formula = re.sub(r'([a-zA-Z0-9_]+|\))\s*\^\s*\(([^)]+)\)', replace_exponent, formula)
-    # Handle simple exponents
-    formula = re.sub(r'([a-zA-Z0-9_]+|\))\s*\^\s*([a-zA-Z0-9_]+)', replace_exponent, formula)
-    
-    # Handle division to create fractions
-    # Find top-level division (not inside parentheses)
-    def find_division(s):
-        level = 0
-        for i, char in enumerate(s):
-            if char == '(':
-                level += 1
-            elif char == ')':
-                level -= 1
-            elif char == '/' and level == 0:
-                return i
-        return -1
-    
-    div_pos = find_division(formula)
-    if div_pos != -1:
-        numerator = formula[:div_pos].strip()
-        denominator = formula[div_pos+1:].strip()
-        
-        # Remove outer parentheses if present
-        if numerator.startswith('(') and numerator.endswith(')'):
-            numerator = numerator[1:-1]
-        if denominator.startswith('(') and denominator.endswith(')'):
-            denominator = denominator[1:-1]
-        
-        numerator_latex = convert_to_latex(numerator)
-        denominator_latex = convert_to_latex(denominator)
-        return f"\\frac{{{numerator_latex}}}{{{denominator_latex}}}"
-    
-    # Replace multiplication with space (implicit multiplication)
-    formula = formula.replace("*", " ")
-    
-    # Clean up extra spaces
-    formula = re.sub(r'\s+', ' ', formula).strip()
-    
-    return formula
+# Function to reorder multiplication terms (constants before variables)
+def reorder_multiplication(expr):
+    if expr.is_Mul:  # Check if the expression is a multiplication
+        args = list(expr.args)
+        # Separate constants and non-constants
+        constants = [arg for arg in args if arg.is_Number or arg.is_Rational]
+        non_constants = [arg for arg in args if not (arg.is_Number or arg.is_Rational)]
+        # Reorder: constants first, then non-constants
+        reordered_args = constants + non_constants
+        if reordered_args != list(expr.args):  # Only reconstruct if order changed
+            return sp.Mul(*reordered_args, evaluate=False)
+    # Recursively apply to sub-expressions
+    return expr.func(*[reorder_multiplication(arg) for arg in expr.args], evaluate=False)
 
 # Function to update LaTeX from formula
 def update_latex():
@@ -227,7 +78,49 @@ def update_latex():
         st.error(error_msg)
         return
     try:
-        latex_str = convert_to_latex(formula)
+        # Replace square brackets with parentheses
+        parsed_formula = formula.replace("[", "(").replace("]", ")")
+        
+        # Replace ^ with ** for exponentiation
+        parsed_formula = parsed_formula.replace("^", "**")
+        
+        # Replace log with sp.log
+        parsed_formula = re.sub(r'\blog\(', 'sp.log(', parsed_formula)
+        
+        # Replace Integral and Derivative, preserving content
+        parsed_formula = re.sub(r'Integral\(\s*([^,)]*?)\s*,\s*x\s*\)', 
+                                lambda m: 'sp.Integral(' + (m.group(1).strip() if m.group(1).strip() else '1') + ', x)', 
+                                parsed_formula)
+        parsed_formula = re.sub(r'Derivative\(\s*([^,)]*?)\s*,\s*x\s*\)', 
+                                lambda m: 'sp.Derivative(' + (m.group(1).strip() if m.group(1).strip() else '1') + ', x)', 
+                                parsed_formula)
+        
+        # Define local namespace with SymPy functions and symbols
+        local_dict = {
+            "sp": sp,
+            "sqrt": sp.sqrt,
+            "log": sp.log,
+            "sin": sp.sin,
+            "cos": sp.cos,
+            "tan": sp.tan,
+            "exp": sp.exp,
+            "x": sp.Symbol('x'),
+            "y": sp.Symbol('y')
+        }
+        
+        # Parse expression with evaluate=False to preserve structure
+        expr = sp.sympify(parsed_formula, locals=local_dict, evaluate=False)
+        
+        # Reorder multiplication terms
+        reordered_expr = reorder_multiplication(expr)
+        
+        # Convert to LaTeX with order='none' to preserve input order (except for multiplication)
+        latex_str = sp.latex(reordered_expr, order='none')
+        
+        # Clean up LaTeX output for derivatives
+        latex_str = re.sub(r'\\frac\{d\}\{d x\}\s*([a-zA-Z])', r'\\frac{d\1}{dx}', latex_str)
+        latex_str = re.sub(r'\\frac\{d\}\{d x\}\s*\\left\(([^)]+)\\right\)', r'\\frac{d(\\1)}{dx}', latex_str)
+        
         st.session_state.latex = latex_str
     except Exception as e:
         error_msg = f"Invalid formula: {str(e)}"
