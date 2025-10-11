@@ -1,7 +1,7 @@
 import streamlit as st
 import sympy as sp
 from sympy.parsing.sympy_parser import parse_expr, standard_transformations
-from functools import partial, lru_cache
+from functools import lru_cache
 import base64
 from io import BytesIO
 import matplotlib.pyplot as plt
@@ -158,7 +158,7 @@ def latex_to_image(latex_str):
 def latex_to_pdf(latex_str):
     try:
         fig = plt.figure(figsize=(8, 2))
-        ax = fig.add_axes([0,0,1,1])
+        ax = fig.add_axes([0, 0, 1, 1])
         ax.axis('off')
         ax.text(0.5, 0.5, f'${latex_str}$', ha='center', va='center', fontsize=18)
         buf = BytesIO()
@@ -166,17 +166,20 @@ def latex_to_pdf(latex_str):
         plt.close(fig)
         buf.seek(0)
         return base64.b64encode(buf.read()).decode()
-    except:
+    except Exception as e:
+        st.error(f"PDF generation error: {str(e)}")
         return None
 
 # Append to formula
 def append_to_formula(text):
+    temp_formula = st.session_state.formula
     if st.session_state.mode == "LaTeX":
-        st.session_state.temp_formula = st.session_state.formula + text
+        temp_formula += text
     else:
         text = text.replace('_{}', '_').replace('^{}', '^')
-        st.session_state.temp_formula = st.session_state.formula + text
-    st.session_state.formula = st.session_state.temp_formula
+        temp_formula += text
+    st.session_state.temp_formula = temp_formula
+    st.session_state.formula = temp_formula
     update_latex()
 
 # Add subscript
@@ -207,7 +210,7 @@ def add_subscript(subscript, selected_param):
 st.title("Formula to LaTeX Converter")
 
 # Mode and sync
-col1, col2 = st.columns([3,1])
+col1, col2 = st.columns([3, 1])
 with col2:
     st.session_state.mode = st.selectbox("Mode:", ["SymPy (parseable)", "LaTeX (direct)"], index=0 if st.session_state.mode == "SymPy" else 1)
     if st.button("Sync LaTeX → SymPy", key="sync_btn"):
@@ -278,15 +281,21 @@ symbol_lists = [
 ]
 for idx, tab in enumerate(tabs[:9]):  # Basic to Petroleum
     with tab:
-        cols = st.columns(5)
+        symbols = symbol_lists[idx]
+        num_cols = min(5, len(symbols))  # Adjust columns dynamically to avoid empty placeholders
+        cols = st.columns(num_cols) if num_cols > 0 else [st]
         if tab_names[idx] == "Calculus":
             for i, (label, text) in enumerate(symbols_calculus.items()):
-                with cols[i % 5]:
-                    if st.button(label, key=f"btn_{tab_names[idx]}_{i}"): append_to_formula(text)
+                col_idx = i % num_cols
+                with cols[col_idx]:
+                    if st.button(label, key=f"btn_{tab_names[idx]}_{i}"):
+                        append_to_formula(text)
         else:
-            for i, (label, text) in enumerate(symbol_lists[idx]):
-                with cols[i % 5]:
-                    if st.button(label, key=f"btn_{tab_names[idx]}_{i}"): append_to_formula(text)
+            for i, (label, text) in enumerate(symbols):
+                col_idx = i % num_cols
+                with cols[col_idx]:
+                    if st.button(label, key=f"btn_{tab_names[idx]}_{i}"):
+                        append_to_formula(text)
 
 # Matrices
 with tabs[9]:
@@ -312,9 +321,11 @@ with tabs[10]:
         chem = ["\\ce{H2O}", "\\ce{CO2}", "\\ce{A -> B}", "\\ce{A + B <=> C}", "\\ce{H2SO4}"]
         for i, c in enumerate(chem):
             with cols[i % 3]:
-                if st.button(c, key=f"chem_btn_{i}"): append_to_formula(c)
+                if st.button(c, key=f"chem_btn_{i}"):
+                    append_to_formula(c)
         custom_chem = st.text_input("Custom \\ce{}", key="custom_chem")
-        if st.button("Insert Custom Chemistry", key="insert_chem"): append_to_formula(f"\\ce{{{custom_chem}}}")
+        if st.button("Insert Custom Chemistry", key="insert_chem"):
+            append_to_formula(f"\\ce{{{custom_chem}}}")
 
 # Physics
 with tabs[11]:
@@ -323,7 +334,8 @@ with tabs[11]:
         physics = ["\\dv{f}{x}", "\\grad{\\psi}", "\\curl{\\mathbf{A}}", "\\div{\\mathbf{F}}", "\\pdv{f}{x,y}"]
         for i, p in enumerate(physics):
             with cols[i % 3]:
-                if st.button(p, key=f"physics_btn_{i}"): append_to_formula(p)
+                if st.button(p, key=f"physics_btn_{i}"):
+                    append_to_formula(p)
         custom_deriv = st.text_input("Custom Derivative (e.g., f,x)", placeholder="function,variable", key="custom_deriv")
         if st.button("Insert Custom Derivative", key="insert_deriv"):
             if "," in custom_deriv:
@@ -335,6 +347,7 @@ st.text_area("LaTeX Output:", st.session_state.latex, key="latex_out", height=10
 
 # Preview
 st.write("Preview:")
+img_b64 = None  # Initialize to avoid NameError
 if st.session_state.latex and not st.session_state.latex.startswith("Invalid") and not st.session_state.latex.startswith("Parse error"):
     st.latex(st.session_state.latex)
     copy_js = """
@@ -479,7 +492,8 @@ with col2:
 col1, col2 = st.columns(2)
 with col1:
     if st.button("Reset", key="reset_btn"):
-        for key in ["formula", "latex", "temp_formula"]: setattr(st.session_state, key, "")
+        for key in ["formula", "latex", "temp_formula"]:
+            setattr(st.session_state, key, "")
         st.session_state.subscript_trigger = False
         st.rerun()
 with col2:
