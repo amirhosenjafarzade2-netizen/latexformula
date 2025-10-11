@@ -29,6 +29,8 @@ def is_valid_formula(formula):
         return False, "Formula is empty."
     if formula.strip()[-1] in ['+', '-', '*', '/', '^', '_']:
         return False, "Formula ends with an incomplete operator."
+    if '{' in formula or '}' in formula:
+        return False, "LaTeX braces {} not allowed in formula input. Use SymPy syntax (e.g., x_1 instead of x_{1})."
     incomplete_functions = ['sqrt(', 'log(', 'Integral(', 'Derivative(', 'Sum(', 'Limit(', 'sin(', 'cos(', 'tan(', 'cot(', 'sec(', 'csc(', 'asin(', 'acos(', 'atan(', 'sinh(', 'cosh(', 'tanh(', 'exp(']
     for func in incomplete_functions:
         if formula.strip().endswith(func):
@@ -131,9 +133,31 @@ def update_latex():
         latex_str = re.sub(r'\\frac\{d\}\{d x\}\s*\\left\(([^)]+)\\right\)', r'\\frac{d(\\1)}{dx}', latex_str)
         st.session_state.latex = latex_str
     except Exception as e:
-        error_msg = f"Invalid formula: {str(e)}"
-        st.session_state.latex = error_msg
+        error_msg = str(e).lower()
+        if 'syntax' in error_msg or 'invalid' in error_msg or 'expected' in error_msg:
+            if '_' in formula:
+                error_msg = f"Parsing error (likely subscript issue): {str(e)}. Tip: Use simple _sub (e.g., x_1), avoid complex nesting."
+            else:
+                error_msg = f"Parsing error: {str(e)}. Check for typos in functions/operators."
+        else:
+            error_msg = f"Unexpected error: {str(e)}"
+        st.session_state.latex = f"Invalid formula: {error_msg}"
         st.error(error_msg)
+
+# Function to sync LaTeX back to formula (heuristic for sub/superscripts)
+def sync_latex_to_formula():
+    latex = st.session_state.latex
+    if not latex or latex.startswith("Invalid"):
+        st.warning("No valid LaTeX to sync.")
+        return
+    # Simple replacements: x_{1} -> x_1, x^{2} -> x^2, etc. (basic heuristic, not full parser)
+    formula_approx = re.sub(r'([a-zA-Z])_\{([^}]+)\}', r'\1_\2', latex)
+    formula_approx = re.sub(r'([a-zA-Z])\{([^}]+)\}', r'\1\2', formula_approx)  # Remove extra braces
+    formula_approx = re.sub(r'\^(\{?)([^}]+)(\}?)', r'^\2', formula_approx)  # ^2 or ^{2} -> ^2
+    formula_approx = formula_approx.replace(r'\mathrm{', '').replace(r'}', '').replace(r'\\', '')  # Strip common LaTeX
+    # Replace ** back if needed, but keep simple
+    st.session_state.formula = formula_approx
+    st.rerun()
 
 # Cached function to create image from LaTeX
 @lru_cache(maxsize=100)
@@ -190,6 +214,9 @@ def add_subscript(subscript, selected_param):
     if not formula.strip():
         st.error("Formula is empty. Enter a parameter to subscript.")
         return
+    if '{' in formula or '}' in formula:
+        st.error("Formula contains LaTeX braces. Clear and re-enter using SymPy syntax.")
+        return
     # Replace all occurrences of the selected parameter with subscripted version
     st.session_state.subscript_trigger = True
     new_formula = re.sub(r'\b' + re.escape(selected_param) + r'\b', f"{selected_param}_{subscript}", formula)
@@ -201,11 +228,17 @@ def add_subscript(subscript, selected_param):
 # UI
 st.title("Formula to LaTeX Converter")
 
+st.info("💡 **Tip**: Use SymPy syntax in the formula field (e.g., `x_1 + y^2`). For LaTeX-style edits like `x_{1}`, use the manual LaTeX field below.")
+
 # Formula input
 st.text_input("Enter formula (e.g., x^2 + sqrt(y))", key="formula", value=st.session_state.formula, on_change=update_latex)
 
 # Manual edit checkbox
 st.checkbox("Edit LaTeX manually (prevents automatic updates from formula)", key="manual_edit")
+
+# Sync button for LaTeX -> formula
+if st.button("Sync LaTeX back to Formula (approximate)"):
+    sync_latex_to_formula()
 
 # Subscript input
 st.write("Add subscript to a parameter:")
@@ -224,6 +257,7 @@ if st.button("Reset Formula"):
     st.session_state.latex = ""
     st.session_state.temp_formula = ""
     st.session_state.subscript_trigger = False
+    st.session_state.manual_edit = False
     st.rerun()
 
 # Symbol selection
@@ -291,7 +325,7 @@ for idx, tab in enumerate(tabs):
                     break
 
 # LaTeX output
-st.text_input("LaTeX version", key="latex")
+st.text_input("LaTeX version", key="latex", on_change=lambda: st.rerun() if st.session_state.manual_edit else None)
 
 # Render LaTeX and copy buttons
 st.write("Rendered:")
