@@ -23,12 +23,10 @@ if "latex" not in st.session_state:
 def is_valid_formula(formula):
     if not formula.strip():
         return False, "Formula is empty."
-    if formula.strip()[-1] in ['+', '-', '*', '/', '^', '_']:
-        return False, "Formula ends with an incomplete operator or subscript."
+    if formula.strip()[-1] in ['+', '-', '*', '/', '^']:
+        return False, "Formula ends with an incomplete operator."
     if formula.count('(') != formula.count(')'):
         return False, "Unbalanced parentheses."
-    if re.search(r'_\b', formula):  # Check for dangling underscore
-        return False, "Incomplete subscript (e.g., 'x_' without a subscript value)."
     return True, ""
 
 # --- Function: Update LaTeX from formula ---
@@ -46,12 +44,6 @@ def update_latex():
         return
 
     try:
-        # Define transformations at the start to avoid scoping issues
-        transformations = standard_transformations + (
-            implicit_multiplication_application,
-            convert_xor
-        )
-
         # Step 1: Find all subscript variables (e.g., x_2, var_name)
         subscript_pattern = r'\b([a-zA-Z]+)_([a-zA-Z0-9]+)\b'
         subscript_vars = set(re.findall(subscript_pattern, formula))
@@ -67,32 +59,24 @@ def update_latex():
             "exp": sp.exp
         }
         
+        # Add subscripted variables as symbols
         for base, subscript in subscript_vars:
             var_name = f"{base}_{subscript}"
             local_dict[var_name] = sp.Symbol(var_name)
         
-        # Step 3: Handle equations with '='
-        if '=' in formula and formula.count('=') == 1:  # Ensure only one '='
-            left, right = [part.strip() for part in formula.split('=', 1)]
-            if not left or not right:
-                st.session_state.latex = "Invalid formula: Empty side of equation."
-                st.error("Invalid formula: Empty side of equation.")
-                return
-            # Replace ^ with ** for SymPy parsing
-            left_parsed = left.replace("^", "**")
-            right_parsed = right.replace("^", "**")
-            
-            # Parse both sides
-            left_expr = parse_expr(left_parsed, local_dict=local_dict, transformations=transformations)
-            right_expr = parse_expr(right_parsed, local_dict=local_dict, transformations=transformations)
-            
-            # Combine into LaTeX equation
-            latex_str = f"{sp.latex(left_expr, order='none')} = {sp.latex(right_expr, order='none')}"
-        else:
-            # Original parsing for non-equations
-            parsed_formula = formula.replace("^", "**")
-            expr = parse_expr(parsed_formula, local_dict=local_dict, transformations=transformations)
-            latex_str = sp.latex(expr, order='none')
+        # Step 3: Replace ^ with ** but DON'T touch underscores
+        parsed_formula = formula.replace("^", "**")
+        
+        # Step 4: Parse the formula
+        transformations = standard_transformations + (
+            implicit_multiplication_application,
+            convert_xor
+        )
+
+        expr = parse_expr(parsed_formula, local_dict=local_dict, transformations=transformations)
+        
+        # Step 5: Convert to LaTeX
+        latex_str = sp.latex(expr, order='none')
 
         st.session_state.latex = latex_str
     except Exception as e:
@@ -150,13 +134,13 @@ buttons = [
     ("log", "log()"),
     ("×", "*"),
     ("^", "^"),
-    ("ₓ Sub", "_"),  # Revert to simple underscore appending
+    ("ₓ Sub", "_"),
     ("=", "=")
 ]
 
 for i, (label, text) in enumerate(buttons):
     with cols[i]:
-        st.button(label, on_click=partial(append_to_formula, text), key=f"button_{i}")
+        st.button(label, on_click=partial(append_to_formula, text))
 
 st.text_input("LaTeX version", key="latex")
 
@@ -285,4 +269,3 @@ if st.session_state.latex and not st.session_state.latex.startswith("Invalid for
         st.error(f"Unable to render LaTeX: {str(e)}")
 else:
     st.write("Enter a valid formula to see the LaTeX rendering.")
-
