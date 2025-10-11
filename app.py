@@ -23,34 +23,21 @@ def is_valid_formula(formula):
     # Check for trailing operators
     if formula.strip()[-1] in ['+', '-', '*', '/', '^', '_']:
         return False, "Formula ends with an incomplete operator."
-    # Check for incomplete function calls
+    # Check for incomplete function calls (e.g., 'sqrt(', 'Integral(')
     incomplete_functions = ['sqrt(', 'log(', 'Integral(', 'Derivative(']
     for func in incomplete_functions:
         if formula.strip().endswith(func):
             return False, f"Incomplete function call: '{func}' is missing arguments."
-    # Check for unbalanced parentheses and square brackets
-    paren_count = 0
-    bracket_count = 0
-    for char in formula:
-        if char == '(':
-            paren_count += 1
-        elif char == ')':
-            paren_count -= 1
-        elif char == '[':
-            bracket_count += 1
-        elif char == ']':
-            bracket_count -= 1
-        if paren_count < 0 or bracket_count < 0:
-            return False, "Unbalanced parentheses or brackets in formula."
-    if paren_count != 0 or bracket_count != 0:
-        return False, "Unbalanced parentheses or brackets in formula."
-    # Check for consecutive commas
+    # Check for unbalanced parentheses
+    if formula.count('(') != formula.count(')'):
+        return False, "Unbalanced parentheses in formula."
+    # Check for consecutive commas in function arguments
     if re.search(r',\s*,', formula):
         return False, "Invalid function arguments: consecutive commas detected."
-    # Check for empty function arguments
-    if re.search(r'[\(\[]\s*,', formula):
+    # Check for empty function arguments (e.g., 'Integral(, x)')
+    if re.search(r'\(\s*,', formula):
         return False, "Invalid function arguments: empty argument detected."
-    # Check for incomplete Integral or Derivative
+    # Check for incomplete Integral or Derivative (missing integrand/function)
     if re.search(r'(Integral|Derivative)\(\s*,', formula):
         return False, "Integral/Derivative is missing the function to integrate/differentiate."
     return True, ""
@@ -64,24 +51,22 @@ def update_latex():
         st.error(error_msg)
         return
     try:
-        # Replace square brackets with parentheses
-        parsed_formula = formula.replace("[", "(").replace("]", ")")
-        
         # Replace ^ with ** for exponentiation
-        parsed_formula = parsed_formula.replace("^", "**")
+        parsed_formula = formula.replace("^", "**")
         
         # Replace log with sp.log
         parsed_formula = re.sub(r'\blog\(', 'sp.log(', parsed_formula)
         
-        # Replace Integral and Derivative, preserving content
+        # Replace Integral with valid SymPy syntax, auto-insert '1' if integrand is empty or whitespace
         parsed_formula = re.sub(r'Integral\(\s*([^,)]*?)\s*,\s*x\s*\)', 
                                 lambda m: 'sp.Integral(' + (m.group(1).strip() if m.group(1).strip() else '1') + ', x)', 
                                 parsed_formula)
+        # Same for Derivative
         parsed_formula = re.sub(r'Derivative\(\s*([^,)]*?)\s*,\s*x\s*\)', 
                                 lambda m: 'sp.Derivative(' + (m.group(1).strip() if m.group(1).strip() else '1') + ', x)', 
                                 parsed_formula)
         
-        # Define local namespace with SymPy functions and symbols
+        # Define local namespace with SymPy functions
         local_dict = {
             "sp": sp,
             "sqrt": sp.sqrt,
@@ -89,19 +74,17 @@ def update_latex():
             "sin": sp.sin,
             "cos": sp.cos,
             "tan": sp.tan,
-            "exp": sp.exp,
-            "x": sp.Symbol('x'),
-            "y": sp.Symbol('y')
+            "exp": sp.exp
         }
-        
-        # Parse expression with evaluate=False to preserve structure
-        expr = sp.sympify(parsed_formula, locals=local_dict, evaluate=False)
-        
-        # Convert to LaTeX with order='none' to preserve input order
+        expr = sp.sympify(parsed_formula, locals=local_dict)
+        # Use latex with order='none' to preserve input order
+        # For derivatives, we need to convert the display format
         latex_str = sp.latex(expr, order='none')
         
-        # Clean up LaTeX output for derivatives
+        # Replace SymPy's derivative notation with dy/dx style
+        # Pattern: \frac{d}{d x} f(x) -> \frac{df}{dx}
         latex_str = re.sub(r'\\frac\{d\}\{d x\}\s*([a-zA-Z])', r'\\frac{d\1}{dx}', latex_str)
+        # For more complex expressions in parentheses
         latex_str = re.sub(r'\\frac\{d\}\{d x\}\s*\\left\(([^)]+)\\right\)', r'\\frac{d(\\1)}{dx}', latex_str)
         
         st.session_state.latex = latex_str
@@ -125,11 +108,11 @@ def latex_to_image(latex_str):
         bbox_inches = bbox.transformed(temp_fig.dpi_scale_trans.inverted())
         plt.close(temp_fig)
         
-        # Calculate proportional figure size with padding
+        # Calculate proportional figure size with slight padding
         width = bbox_inches.width + 0.3
         height = bbox_inches.height + 0.2
         
-        # Create final figure
+        # Create final figure with calculated size
         fig = plt.figure(figsize=(width, height))
         fig.patch.set_facecolor('white')
         ax = fig.add_axes([0, 0, 1, 1])
@@ -156,7 +139,7 @@ def append_to_formula(text):
 st.title("Formula to LaTeX Converter")
 
 # First entry bar: Formula input
-st.text_input("Enter formula (e.g., ((x+2)*(x+6))/((x+4)+(x/5)))", key="formula", on_change=update_latex)
+st.text_input("Enter formula (e.g., x^2 + sqrt(y))", key="formula", on_change=update_latex)
 
 # Buttons for symbols
 st.write("Math tools:")
@@ -311,8 +294,7 @@ if st.session_state.latex and not st.session_state.latex.startswith("Invalid for
         <p style="font-size: 12px; color: #666; margin-top: 10px;">
             • <strong>Copy LaTeX</strong>: Copies the LaTeX code as text<br>
             • <strong>Copy for Word</strong>: Copies MathML for direct pasting into Word<br>
-            • <strong>Copy as Image</strong>: Copies as PNG image (works in most applications)<br>
-            • <strong>Note</strong>: Square brackets [ ] are treated as parentheses ( ) for grouping
+            • <strong>Copy as Image</strong>: Copies as PNG image (works in most applications)
         </p>
         """
         
