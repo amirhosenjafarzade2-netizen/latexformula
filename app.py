@@ -18,8 +18,6 @@ if "formula" not in st.session_state:
     st.session_state.formula = ""
 if "latex" not in st.session_state:
     st.session_state.latex = ""
-if "subscript_mode" not in st.session_state:
-    st.session_state.subscript_mode = False  # Default: off
 
 # --- Helper: Validate formula ---
 def is_valid_formula(formula):
@@ -48,6 +46,12 @@ def update_latex():
         return
 
     try:
+        # Define transformations at the start to avoid scoping issues
+        transformations = standard_transformations + (
+            implicit_multiplication_application,
+            convert_xor
+        )
+
         # Step 1: Find all subscript variables (e.g., x_2, var_name)
         subscript_pattern = r'\b([a-zA-Z]+)_([a-zA-Z0-9]+)\b'
         subscript_vars = set(re.findall(subscript_pattern, formula))
@@ -68,16 +72,15 @@ def update_latex():
             local_dict[var_name] = sp.Symbol(var_name)
         
         # Step 3: Handle equations with '='
-        if '=' in formula:
+        if '=' in formula and formula.count('=') == 1:  # Ensure only one '='
             left, right = [part.strip() for part in formula.split('=', 1)]
+            if not left or not right:
+                st.session_state.latex = "Invalid formula: Empty side of equation."
+                st.error("Invalid formula: Empty side of equation.")
+                return
             # Replace ^ with ** for SymPy parsing
             left_parsed = left.replace("^", "**")
             right_parsed = right.replace("^", "**")
-            
-            transformations = standard_transformations + (
-                implicit_multiplication_application,
-                convert_xor
-            )
             
             # Parse both sides
             left_expr = parse_expr(left_parsed, local_dict=local_dict, transformations=transformations)
@@ -129,14 +132,8 @@ def latex_to_image(latex_str):
 
 # --- Function: Append text to formula ---
 def append_to_formula(text):
-    if text == "_" and not st.session_state.subscript_mode:
-        return  # Do nothing if subscript mode is off
     st.session_state.formula += text
     update_latex()
-
-# --- Function: Toggle subscript mode ---
-def toggle_subscript_mode():
-    st.session_state.subscript_mode = not st.session_state.subscript_mode
 
 # --- UI ---
 st.title("Formula ↔ LaTeX Converter")
@@ -153,39 +150,13 @@ buttons = [
     ("log", "log()"),
     ("×", "*"),
     ("^", "^"),
-    ("ₓ Sub", "toggle_subscript"),  # Special handling for subscript
+    ("ₓ Sub", "_"),  # Revert to simple underscore appending
     ("=", "=")
 ]
 
-# Custom CSS for subscript button colors
-st.markdown("""
-    <style>
-    .subscript-on {
-        background-color: #00c853 !important;
-        color: white !important;
-    }
-    .subscript-off {
-        background-color: #ff1744 !important;
-        color: white !important;
-    }
-    </style>
-""", unsafe_allow_html=True)
-
 for i, (label, text) in enumerate(buttons):
     with cols[i]:
-        if label == "ₓ Sub":
-            # Display button with dynamic class based on subscript_mode
-            button_class = "subscript-on" if st.session_state.subscript_mode else "subscript-off"
-            button_label = "ₓ Sub (ON)" if st.session_state.subscript_mode else "ₓ Sub (OFF)"
-            st.button(button_label, on_click=toggle_subscript_mode, key=f"button_{i}", help="Toggle subscript mode")
-            # Inject CSS to style this specific button
-            st.markdown(f"""
-                <script>
-                document.querySelector('button[kind="secondary"][aria-label="Toggle subscript mode"]').classList.add('{button_class}');
-                </script>
-            """, unsafe_allow_html=True)
-        else:
-            st.button(label, on_click=partial(append_to_formula, text), key=f"button_{i}")
+        st.button(label, on_click=partial(append_to_formula, text), key=f"button_{i}")
 
 st.text_input("LaTeX version", key="latex")
 
@@ -314,3 +285,4 @@ if st.session_state.latex and not st.session_state.latex.startswith("Invalid for
         st.error(f"Unable to render LaTeX: {str(e)}")
 else:
     st.write("Enter a valid formula to see the LaTeX rendering.")
+
