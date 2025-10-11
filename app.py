@@ -15,6 +15,8 @@ if "formula" not in st.session_state:
     st.session_state.formula = ""
 if "latex" not in st.session_state:
     st.session_state.latex = ""
+if "subscript_trigger" not in st.session_state:
+    st.session_state.subscript_trigger = False
 
 # Function to validate formula
 def is_valid_formula(formula):
@@ -38,6 +40,8 @@ def is_valid_formula(formula):
 
 # Function to update LaTeX from formula
 def update_latex():
+    if st.session_state.subscript_trigger:
+        return  # Skip update during subscript application to prevent recursive loop
     formula = st.session_state.formula
     valid, error_msg = is_valid_formula(formula)
     if not valid:
@@ -82,9 +86,9 @@ def update_latex():
             "oo": sp.oo,
             "pi": sp.pi,
             "e": sp.E,
-            "phi": sp.Symbol('phi'),  # Porosity
-            "kappa": sp.Symbol('kappa'),  # Permeability
-            "mu": sp.Symbol('mu'),  # Viscosity
+            "phi": sp.Symbol('phi'),
+            "kappa": sp.Symbol('kappa'),
+            "mu": sp.Symbol('mu'),
         }
         expr = sp.sympify(parsed_formula, locals=local_dict)
         latex_str = sp.latex(expr, order='none')
@@ -125,7 +129,7 @@ def latex_to_image(latex_str):
         st.error(f"Image generation error: {str(e)}")
         return None
 
-# Function to append text to formula and update LaTeX
+# Function to append text to formula
 def append_to_formula(text):
     st.session_state.formula += text
     update_latex()
@@ -139,11 +143,15 @@ def add_subscript(subscript):
         st.error("Subscript must be alphanumeric.")
         return
     formula = st.session_state.formula
-    # Find the last parameter (word or symbol)
+    if not formula.strip():
+        st.error("Formula is empty. Enter a parameter to subscript.")
+        return
     match = re.search(r'(\w+)([^\w]*)$', formula)
     if match:
         param, trailing = match.groups()
-        st.session_state.formula = formula[:match.start(1)] + f"{param}_{subscript}" + trailing
+        st.session_state.subscript_trigger = True
+        st.session_state.formula = formula[:match.start(1)] + f"{param}_{{{subscript}}}" + trailing
+        st.session_state.subscript_trigger = False
         update_latex()
     else:
         st.error("No valid parameter found to subscript.")
@@ -157,7 +165,7 @@ st.text_input("Enter formula (e.g., x^2 + sqrt(y))", key="formula", on_change=up
 # Subscript input
 st.write("Add subscript to last parameter:")
 subscript_input = st.text_input("Enter subscript (e.g., 1, oil, gas)", key="subscript_input")
-if st.button("Apply Subscript"):
+if st.button("Apply Subscript", key="apply_subscript"):
     add_subscript(subscript_input)
 
 # Symbol selection
