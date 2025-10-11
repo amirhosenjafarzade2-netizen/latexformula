@@ -1,6 +1,7 @@
 import streamlit as st
 import sympy as sp
-from functools import partial
+from sympy.parsing.sympy_parser import parse_expr, standard_transformations
+from functools import partial, lru_cache
 import base64
 from io import BytesIO
 import matplotlib.pyplot as plt
@@ -15,8 +16,10 @@ if "formula" not in st.session_state:
     st.session_state.formula = ""
 if "latex" not in st.session_state:
     st.session_state.latex = ""
-if "pending_subscript" not in st.session_state:
-    st.session_state.pending_subscript = None
+if "temp_formula" not in st.session_state:
+    st.session_state.temp_formula = ""
+if "subscript_trigger" not in st.session_state:
+    st.session_state.subscript_trigger = False
 
 # Function to validate formula
 def is_valid_formula(formula):
@@ -38,56 +41,87 @@ def is_valid_formula(formula):
         return False, "Integral/Derivative is missing the function to integrate/differentiate."
     return True, ""
 
+# Function to get locals with automatic symbol declaration
+def get_locals(formula):
+    local_dict = {
+        "sp": sp,
+        "sqrt": sp.sqrt,
+        "log": sp.log,
+        "sin": sp.sin,
+        "cos": sp.cos,
+        "tan": sp.tan,
+        "cot": sp.cot,
+        "sec": sp.sec,
+        "csc": sp.csc,
+        "asin": sp.asin,
+        "acos": sp.acos,
+        "atan": sp.atan,
+        "sinh": sp.sinh,
+        "cosh": sp.cosh,
+        "tanh": sp.tanh,
+        "exp": sp.exp,
+        "Sum": sp.Sum,
+        "Limit": sp.Limit,
+        "Integral": sp.Integral,
+        "Derivative": sp.Derivative,
+        "oo": sp.oo,
+        "pi": sp.pi,
+        "e": sp.E,
+        "phi": sp.Symbol('phi'),
+        "kappa": sp.Symbol('kappa'),
+        "mu": sp.Symbol('mu'),
+        "alpha": sp.Symbol('alpha'),
+        "beta": sp.Symbol('beta'),
+        "gamma": sp.Symbol('gamma'),
+        "delta": sp.Symbol('delta'),
+        "Delta": sp.Symbol('Delta'),
+        "epsilon": sp.Symbol('epsilon'),
+        "zeta": sp.Symbol('zeta'),
+        "eta": sp.Symbol('eta'),
+        "theta": sp.Symbol('theta'),
+        "Theta": sp.Symbol('Theta'),
+        "iota": sp.Symbol('iota'),
+        "lambda": sp.Symbol('lambda'),
+        "Lambda": sp.Symbol('Lambda'),
+        "nu": sp.Symbol('nu'),
+        "xi": sp.Symbol('xi'),
+        "rho": sp.Symbol('rho'),
+        "sigma": sp.Symbol('sigma'),
+        "Sigma": sp.Symbol('Sigma'),
+        "tau": sp.Symbol('tau'),
+        "Phi": sp.Symbol('Phi'),
+        "omega": sp.Symbol('omega'),
+        "Omega": sp.Symbol('Omega'),
+        "degree": sp.Symbol('degree'),
+        "approx": sp.Symbol('approx'),
+        "ne": sp.Symbol('ne'),
+        "ge": sp.Symbol('ge'),
+        "le": sp.Symbol('le'),
+    }
+    # Automatically add undefined variables as symbols
+    variables = re.findall(r'\b[a-zA-Z]\w*\b', formula)
+    reserved = ['sqrt', 'log', 'sin', 'cos', 'tan', 'cot', 'sec', 'csc', 'asin', 'acos', 'atan',
+                'sinh', 'cosh', 'tanh', 'exp', 'Sum', 'Limit', 'Integral', 'Derivative', 'oo', 'pi', 'e']
+    for var in variables:
+        if var not in local_dict and var not in reserved:
+            local_dict[var] = sp.Symbol(var)
+    return local_dict
+
 # Function to update LaTeX from formula
 def update_latex():
+    if st.session_state.subscript_trigger:
+        return  # Skip update during subscript application
     formula = st.session_state.formula
     valid, error_msg = is_valid_formula(formula)
     if not valid:
         st.session_state.latex = f"Invalid formula: {error_msg}"
+        st.error(error_msg)
         return
     try:
+        # Replace ^ with ** for exponentiation
         parsed_formula = formula.replace("^", "**")
-        parsed_formula = re.sub(r'\blog\(', 'sp.log(', parsed_formula)
-        parsed_formula = re.sub(r'Integral\(\s*([^,)]*?)\s*,\s*(\w+)\s*\)', 
-                               lambda m: 'sp.Integral(' + (m.group(1).strip() if m.group(1).strip() else '1') + ', ' + m.group(2) + ')', 
-                               parsed_formula)
-        parsed_formula = re.sub(r'Derivative\(\s*([^,)]*?)\s*,\s*(\w+)\s*\)', 
-                               lambda m: 'sp.Derivative(' + (m.group(1).strip() if m.group(1).strip() else '1') + ', ' + m.group(2) + ')', 
-                               parsed_formula)
-        parsed_formula = re.sub(r'Sum\(\s*([^,)]*?)\s*,\s*\((\w+),\s*([^,)]*?),\s*([^)]*?)\)\)', 
-                               lambda m: 'sp.Sum(' + (m.group(1).strip() if m.group(1).strip() else '1') + ', (' + m.group(2) + ', ' + m.group(3) + ', ' + m.group(4) + '))', 
-                               parsed_formula)
-        parsed_formula = re.sub(r'Limit\(\s*([^,)]*?)\s*,\s*(\w+),\s*([^)]*?)\)', 
-                               lambda m: 'sp.Limit(' + (m.group(1).strip() if m.group(1).strip() else '1') + ', ' + m.group(2) + ', ' + m.group(3) + ')', 
-                               parsed_formula)
-        
-        local_dict = {
-            "sp": sp,
-            "sqrt": sp.sqrt,
-            "log": sp.log,
-            "sin": sp.sin,
-            "cos": sp.cos,
-            "tan": sp.tan,
-            "cot": sp.cot,
-            "sec": sp.sec,
-            "csc": sp.csc,
-            "asin": sp.asin,
-            "acos": sp.acos,
-            "atan": sp.atan,
-            "sinh": sp.sinh,
-            "cosh": sp.cosh,
-            "tanh": sp.tanh,
-            "exp": sp.exp,
-            "Sum": sp.Sum,
-            "Limit": sp.Limit,
-            "oo": sp.oo,
-            "pi": sp.pi,
-            "e": sp.E,
-            "phi": sp.Symbol('phi'),
-            "kappa": sp.Symbol('kappa'),
-            "mu": sp.Symbol('mu'),
-        }
-        expr = sp.sympify(parsed_formula, locals=local_dict)
+        local_dict = get_locals(parsed_formula)
+        expr = parse_expr(parsed_formula, local_dict=local_dict, transformations=standard_transformations)
         latex_str = sp.latex(expr, order='none')
         latex_str = re.sub(r'\\frac\{d\}\{d x\}\s*([a-zA-Z])', r'\\frac{d\1}{dx}', latex_str)
         latex_str = re.sub(r'\\frac\{d\}\{d x\}\s*\\left\(([^)]+)\\right\)', r'\\frac{d(\\1)}{dx}', latex_str)
@@ -95,26 +129,31 @@ def update_latex():
     except Exception as e:
         error_msg = f"Invalid formula: {str(e)}"
         st.session_state.latex = error_msg
+        st.error(error_msg)
 
-# Function to create image from LaTeX
+# Cached function to create image from LaTeX
+@lru_cache(maxsize=100)
 def latex_to_image(latex_str):
     try:
+        # Dynamic sizing based on length
+        char_count = len(latex_str)
+        fontsize = min(20, max(12, 20 - char_count // 10))
         temp_fig = plt.figure(figsize=(10, 2))
         temp_ax = temp_fig.add_subplot(111)
         temp_ax.axis('off')
-        t = temp_ax.text(0.5, 0.5, f'${latex_str}$', fontsize=20, ha='center', va='center')
+        t = temp_ax.text(0.5, 0.5, f'${latex_str}$', fontsize=fontsize, ha='center', va='center')
         temp_fig.canvas.draw()
         bbox = t.get_window_extent(temp_fig.canvas.get_renderer())
         bbox_inches = bbox.transformed(temp_fig.dpi_scale_trans.inverted())
         plt.close(temp_fig)
         
-        width = bbox_inches.width + 0.3
-        height = bbox_inches.height + 0.2
+        width = max(bbox_inches.width + 0.3, 4)
+        height = max(bbox_inches.height + 0.2, 1)
         fig = plt.figure(figsize=(width, height))
         fig.patch.set_facecolor('white')
         ax = fig.add_axes([0, 0, 1, 1])
         ax.axis('off')
-        ax.text(0.5, 0.5, f'${latex_str}$', fontsize=20, ha='center', va='center')
+        ax.text(0.5, 0.5, f'${latex_str}$', fontsize=fontsize, ha='center', va='center')
         buf = BytesIO()
         plt.savefig(buf, format='png', dpi=300, bbox_inches='tight', pad_inches=0.05, facecolor='white')
         plt.close(fig)
@@ -127,52 +166,64 @@ def latex_to_image(latex_str):
 
 # Function to append text to formula
 def append_to_formula(text):
-    st.session_state.formula = st.session_state.formula + text
+    st.session_state.temp_formula = st.session_state.formula + text
+    st.session_state.formula = st.session_state.temp_formula
+    update_latex()
 
-# Function to apply pending subscript
-def apply_subscript_to_formula(subscript):
-    st.session_state.pending_subscript = subscript
+# Function to get parameters from formula
+def get_parameters(formula):
+    return re.findall(r'\b[a-zA-Z]\w*\b', formula)
 
-# Check if we need to apply a subscript from previous run
-if st.session_state.pending_subscript is not None:
-    subscript = st.session_state.pending_subscript
-    formula = st.session_state.formula
-    
+# Function to add subscript to selected parameter
+def add_subscript(subscript, selected_param):
     if not subscript.strip():
         st.error("Subscript cannot be empty.")
-    elif not re.match(r'^[\w\d]+$', subscript):
+        return
+    if not re.match(r'^[\w\d]+$', subscript):
         st.error("Subscript must be alphanumeric.")
-    elif not formula.strip():
+        return
+    formula = st.session_state.formula
+    if not formula.strip():
         st.error("Formula is empty. Enter a parameter to subscript.")
+        return
+    # Replace the selected parameter with subscripted version
+    # Find the last occurrence to avoid replacing earlier ones if duplicates
+    param_positions = [m.start() for m in re.finditer(r'\b' + re.escape(selected_param) + r'\b', formula)]
+    if param_positions:
+        last_pos = param_positions[-1]
+        st.session_state.subscript_trigger = True
+        new_formula = formula[:last_pos] + f"{selected_param}_{{{subscript}}}" + formula[last_pos + len(selected_param):]
+        st.session_state.temp_formula = new_formula
+        st.session_state.formula = st.session_state.temp_formula
+        st.session_state.subscript_trigger = False
+        update_latex()
     else:
-        match = re.search(r'(\w+)([^\w]*)$', formula)
-        if match:
-            param, trailing = match.groups()
-            new_formula = formula[:match.start(1)] + f"{param}_{{{subscript}}}" + trailing
-            st.session_state.formula = new_formula
-        else:
-            st.error("No valid parameter found to subscript.")
-    
-    # Clear the pending subscript
-    st.session_state.pending_subscript = None
-    st.rerun()
+        st.error("Selected parameter not found in formula.")
 
 # UI
 st.title("Formula to LaTeX Converter")
 
 # Formula input
-formula_value = st.text_input("Enter formula (e.g., x^2 + sqrt(y))", value=st.session_state.formula, key="formula_input")
-
-# Update formula in session state if changed
-if formula_value != st.session_state.formula:
-    st.session_state.formula = formula_value
-    update_latex()
+st.text_input("Enter formula (e.g., x^2 + sqrt(y))", key="formula", value=st.session_state.formula, on_change=update_latex)
 
 # Subscript input
-st.write("Add subscript to last parameter:")
-subscript_input = st.text_input("Enter subscript (e.g., 1, oil, gas)", key="subscript_input")
-if st.button("Apply Subscript", key="apply_subscript"):
-    apply_subscript_to_formula(subscript_input)
+st.write("Add subscript to a parameter:")
+parameters = get_parameters(st.session_state.formula)
+if parameters:
+    selected_param = st.selectbox("Select parameter to subscript:", parameters)
+    subscript_input = st.text_input("Enter subscript (e.g., 1, oil, gas)", key="subscript_input")
+    if st.button("Apply Subscript", key="apply_subscript"):
+        add_subscript(subscript_input, selected_param)
+else:
+    st.write("No parameters found in formula.")
+
+# Reset button
+if st.button("Reset Formula"):
+    st.session_state.formula = ""
+    st.session_state.latex = ""
+    st.session_state.temp_formula = ""
+    st.session_state.subscript_trigger = False
+    st.rerun()
 
 # Symbol selection
 st.write("Math tools:")
@@ -235,14 +286,11 @@ for idx, tab in enumerate(tabs):
         if selected_symbol:
             for label, text in symbol_lists[idx]:
                 if label == selected_symbol:
-                    if st.button(f"Insert {label}", key=f"btn_{tab_names[idx].lower()}_{text}_{idx}"):
-                        append_to_formula(text)
-                        update_latex()
-                        st.rerun()
+                    st.button(f"Insert {label}", key=f"btn_{tab_names[idx].lower()}_{text}_{idx}", on_click=partial(append_to_formula, text))
                     break
 
 # LaTeX output
-st.text_input("LaTeX version", value=st.session_state.latex, key="latex_output", disabled=True)
+st.text_input("LaTeX version", key="latex")
 
 # Render LaTeX and copy buttons
 st.write("Rendered:")
@@ -251,7 +299,6 @@ if st.session_state.latex and not st.session_state.latex.startswith("Invalid for
         st.latex(st.session_state.latex)
         img_b64 = latex_to_image(st.session_state.latex)
         copy_js = """
-        <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/3.2.2/es5/tex-mml-chtml.min.js"></script>
         <script>
         function copyLatexText() {
             const button = document.getElementById('copy-latex-btn');
@@ -277,6 +324,9 @@ if st.session_state.latex and not st.session_state.latex.startswith("Invalid for
             const button = document.getElementById('copy-word-btn');
             const latexCode = document.getElementById('latex-content').innerText;
             try {
+                if (!window.MathJax || !window.MathJax.tex2mmlPromise) {
+                    throw new Error('MathJax not loaded');
+                }
                 const mathml = await MathJax.tex2mmlPromise(latexCode);
                 const htmlContent = `<!DOCTYPE html><html><body>${mathml}</body></html>`;
                 const blob = new Blob([htmlContent], { type: 'text/html' });
@@ -310,6 +360,15 @@ if st.session_state.latex and not st.session_state.latex.startswith("Invalid for
                 }, 1500);
                 return;
             }
+            if (!window.ClipboardItem) {
+                button.style.backgroundColor = '#ff0000';
+                button.innerText = 'Not Supported';
+                setTimeout(() => {
+                    button.style.backgroundColor = '#0f80c1';
+                    button.innerText = 'Copy as Image';
+                }, 1500);
+                return;
+            }
             try {
                 button.innerText = 'Copying...';
                 const response = await fetch(imgElement.src);
@@ -333,6 +392,7 @@ if st.session_state.latex and not st.session_state.latex.startswith("Invalid for
             }
         }
         </script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/3.2.2/es5/tex-mml-chtml.min.js" onerror="console.error('MathJax failed to load')"></script>
         """
         html_content = f"""
         {copy_js}
