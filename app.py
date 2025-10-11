@@ -149,12 +149,11 @@ for i, (label, text) in enumerate(buttons):
     with cols[i]:
         st.button(label, on_click=partial(append_to_formula, text), key=f"btn_{i}")
 
-# Add a toggle switch for subscript mode in the last column
-with cols[9]:
-    subscript_toggle = st.toggle("🔢", value=st.session_state.subscript_mode, key="sub_toggle", help="Toggle subscript parsing mode")
-    if subscript_toggle != st.session_state.subscript_mode:
-        st.session_state.subscript_mode = subscript_toggle
-        update_latex()
+# Add toggle for subscript mode below the buttons
+subscript_toggle = st.toggle("Subscript Mode", value=st.session_state.subscript_mode, key="sub_toggle", help="When ON, treats _ as subscript (e.g., x_2 becomes x₂). When OFF, treats _ as regular character.")
+if subscript_toggle != st.session_state.subscript_mode:
+    st.session_state.subscript_mode = subscript_toggle
+    update_latex()
 
 st.text_input("LaTeX version", key="latex")
 
