@@ -118,11 +118,12 @@ def update_latex():
         st.error(error_msg)
         return
     try:
-        # Replace ^ with ** for exponentiation
         parsed_formula = formula.replace("^", "**")
         local_dict = get_locals(parsed_formula)
-        expr = parse_expr(parsed_formula, local_dict=local_dict, transformations=standard_transformations)
-        latex_str = sp.latex(expr, order='none')
+        # Use transformations based on simplify toggle
+        transformations = standard_transformations if st.session_state.get('simplify_latex', True) else ()
+        expr = parse_expr(parsed_formula, local_dict=local_dict, transformations=transformations)
+        latex_str = sp.latex(expr, order='none', mode='inline')
         latex_str = re.sub(r'\\frac\{d\}\{d x\}\s*([a-zA-Z])', r'\\frac{d\1}{dx}', latex_str)
         latex_str = re.sub(r'\\frac\{d\}\{d x\}\s*\\left\(([^)]+)\\right\)', r'\\frac{d(\\1)}{dx}', latex_str)
         st.session_state.latex = latex_str
@@ -135,7 +136,6 @@ def update_latex():
 @lru_cache(maxsize=100)
 def latex_to_image(latex_str):
     try:
-        # Dynamic sizing based on length
         char_count = len(latex_str)
         fontsize = min(20, max(12, 20 - char_count // 10))
         temp_fig = plt.figure(figsize=(10, 2))
@@ -186,8 +186,6 @@ def add_subscript(subscript, selected_param):
     if not formula.strip():
         st.error("Formula is empty. Enter a parameter to subscript.")
         return
-    # Replace the selected parameter with subscripted version
-    # Find the last occurrence to avoid replacing earlier ones if duplicates
     param_positions = [m.start() for m in re.finditer(r'\b' + re.escape(selected_param) + r'\b', formula)]
     if param_positions:
         last_pos = param_positions[-1]
@@ -205,6 +203,9 @@ st.title("Formula to LaTeX Converter")
 
 # Formula input
 st.text_input("Enter formula (e.g., x^2 + sqrt(y))", key="formula", value=st.session_state.formula, on_change=update_latex)
+
+# Simplify toggle
+st.checkbox("Simplify LaTeX output", key="simplify_latex", value=True, on_change=update_latex)
 
 # Subscript input
 st.write("Add subscript to a parameter:")
