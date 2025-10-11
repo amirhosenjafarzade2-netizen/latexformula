@@ -104,6 +104,19 @@ def update_latex():
         latex_str = re.sub(r'\\frac\{d\}\{d x\}\s*([a-zA-Z])', r'\\frac{d\1}{dx}', latex_str)
         latex_str = re.sub(r'\\frac\{d\}\{d x\}\s*\\left\(([^)]+)\\right\)', r'\\frac{d(\\1)}{dx}', latex_str)
         
+        # Ensure parentheses around numerator and denominator in fractions
+        def add_parens(match):
+            num = match.group(1)
+            denom = match.group(2)
+            # Add parentheses if numerator or denominator contains + or - (but not inside existing parens)
+            if '+' in num or '-' in num:
+                num = f"\\left({num}\\right)"
+            if '+' in denom or '-' in denom:
+                denom = f"\\left({denom}\\right)"
+            return f"\\frac{{{num}}}{{{denom}}}"
+        
+        latex_str = re.sub(r'\\frac\{([^}]*)\}\{([^}]*)\}', add_parens, latex_str)
+        
         st.session_state.latex = latex_str
     except Exception as e:
         error_msg = f"Invalid formula: {str(e)}"
@@ -156,7 +169,7 @@ def append_to_formula(text):
 st.title("Formula to LaTeX Converter")
 
 # First entry bar: Formula input
-st.text_input("Enter formula (e.g., ((x+2)*(x+6))/((x+4)+(x/5)))", key="formula", on_change=update_latex)
+st.text_input("Enter formula (e.g., [(x+2)*(x+6)]/[(x+4)+(x/5)])", key="formula", on_change=update_latex)
 
 # Buttons for symbols
 st.write("Math tools:")
