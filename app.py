@@ -1,8 +1,7 @@
 import streamlit as st
 import sympy as sp
 from sympy.parsing.sympy_parser import (
-    parse_expr, standard_transformations, implicit_multiplication_application,
-    convert_xor, auto_symbol
+    parse_expr, standard_transformations, implicit_multiplication_application, convert_xor
 )
 from functools import partial
 import base64
@@ -24,11 +23,28 @@ if "latex" not in st.session_state:
 def is_valid_formula(formula):
     if not formula.strip():
         return False, "Formula is empty."
-    if formula.strip()[-1] in ['+', '-', '*', '/', '^', '_', '=']:
+    if formula.strip()[-1] in ['+', '-', '*', '/', '^']:
         return False, "Formula ends with an incomplete operator."
     if formula.count('(') != formula.count(')'):
         return False, "Unbalanced parentheses."
     return True, ""
+
+# --- Function: Convert subscripts to SymPy format ---
+def convert_subscripts(formula):
+    """Convert x_2 notation to SymPy Symbol('x_2') format"""
+    # Match patterns like x_2, y_10, var_name, etc. but not inside function calls
+    # Use word boundaries and lookbehind to avoid matching function names
+    pattern = r'\b([a-zA-Z])_([0-9]+)\b'
+    
+    def replace_subscript(match):
+        base = match.group(1)
+        subscript = match.group(2)
+        # Create a unique symbol name that won't conflict
+        return f"{base}{subscript}sub"
+    
+    # Store mapping for later conversion back to proper subscript in LaTeX
+    converted = re.sub(pattern, replace_subscript, formula)
+    return converted
 
 # --- Function: Update LaTeX from formula ---
 def update_latex():
@@ -45,35 +61,49 @@ def update_latex():
         return
 
     try:
-        # --- Preprocess formula ---
-        formula = formula.replace("^", "**")  # caret → power
-        formula = formula.replace("=", "==")  # equality symbol fix
-        formula = re.sub(r'([a-zA-Z])_([0-9]+)', r'\1_\2', formula)  # allow subscripts like x_2
-
+        # Convert ^ to ** and handle subscripts
+        parsed_formula = formula.replace("^", "**")
+        
+        # Find and store subscript mappings
+        subscript_map = {}
+        pattern = r'\b([a-zA-Z])_([0-9]+)\b'
+        matches = re.finditer(pattern, parsed_formula)
+        for match in matches:
+            base = match.group(1)
+            subscript = match.group(2)
+            temp_name = f"{base}{subscript}sub"
+            subscript_map[temp_name] = (base, subscript)
+        
+        # Replace subscripts with temporary names
+        parsed_formula = re.sub(pattern, lambda m: f"{m.group(1)}{m.group(2)}sub", parsed_formula)
+        
         local_dict = {
             "sp": sp,
+            "Symbol": sp.Symbol,
             "sqrt": sp.sqrt,
             "log": sp.log,
             "sin": sp.sin,
             "cos": sp.cos,
             "tan": sp.tan,
-            "exp": sp.exp,
-            "Integral": sp.Integral,
-            "Derivative": sp.Derivative,
-            "Eq": sp.Eq
+            "exp": sp.exp
         }
 
         transformations = standard_transformations + (
             implicit_multiplication_application,
-            convert_xor,
-            auto_symbol,  # allow undefined symbols like x_2, F1, etc.
+            convert_xor
         )
 
-        expr = parse_expr(formula, local_dict=local_dict, transformations=transformations)
-
+        expr = parse_expr(parsed_formula, local_dict=local_dict, transformations=transformations)
+        
+        # Replace temporary symbols with proper subscript symbols
+        for temp_name, (base, subscript) in subscript_map.items():
+            temp_sym = sp.Symbol(temp_name)
+            subscript_sym = sp.Symbol(f"{base}_{subscript}")
+            expr = expr.subs(temp_sym, subscript_sym)
+        
         latex_str = sp.latex(expr, order='none')
-        st.session_state.latex = latex_str
 
+        st.session_state.latex = latex_str
     except Exception as e:
         st.session_state.latex = f"Invalid formula: {str(e)}"
         st.error(f"Invalid formula: {str(e)}")
@@ -146,6 +176,7 @@ if st.session_state.latex and not st.session_state.latex.startswith("Invalid for
         st.latex(st.session_state.latex)
         img_b64 = latex_to_image(st.session_state.latex)
 
+        # JS + HTML block
         copy_js = """
         <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/3.2.2/es5/tex-mml-chtml.min.js"></script>
         <script>
