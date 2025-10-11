@@ -67,6 +67,9 @@ def update_latex():
         # Replace square brackets with parentheses
         parsed_formula = formula.replace("[", "(").replace("]", ")")
         
+        # Preprocess implicit multiplication (e.g., x2 -> x * 2)
+        parsed_formula = re.sub(r'([a-zA-Z])(\d+)', r'\1 * \2', parsed_formula)
+        
         # Replace ^ with ** for exponentiation
         parsed_formula = parsed_formula.replace("^", "**")
         
