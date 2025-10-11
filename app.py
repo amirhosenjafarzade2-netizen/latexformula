@@ -391,11 +391,11 @@ if st.session_state.error_highlight:
 # Undo, Redo, Clear buttons
 col_undo, col_redo, col_clear = st.columns(3)
 with col_undo:
-    st.button("Undo (Ctrl+Z)", on_click=undo, disabled=st.session_state.history_index <= 0, key="undo", help="Undo last action", args={"aria-label": "Undo last formula change"})
+    st.button("Undo (Ctrl+Z)", on_click=undo, disabled=st.session_state.history_index <= 0, key="undo", help="Undo last action")
 with col_redo:
-    st.button("Redo (Ctrl+Y)", on_click=redo, disabled=st.session_state.history_index >= len(st.session_state.history) - 1, key="redo", help="Redo last action", args={"aria-label": "Redo last formula change"})
+    st.button("Redo (Ctrl+Y)", on_click=redo, disabled=st.session_state.history_index >= len(st.session_state.history) - 1, key="redo", help="Redo last action")
 with col_clear:
-    st.button("Clear", on_click=clear_formula, key="clear", help="Clear the formula", args={"aria-label": "Clear formula input"})
+    st.button("Clear", on_click=clear_formula, key="clear", help="Clear the formula")
 
 # Color selection UI
 with st.expander("Color Subexpressions", expanded=False):
