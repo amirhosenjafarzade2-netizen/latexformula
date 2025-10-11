@@ -15,7 +15,7 @@ def is_valid_formula(formula, mode):
         return False, "Formula is empty."
     if formula.strip()[-1] in ['+', '-', '*', '/', '^', '_']:
         return False, "Formula ends with an incomplete operator."
-    if mode == "SymPy" and ('{' in formula or '}' in formula):
+    if mode == "LaTeX" and ('{' in formula or '}' in formula):
         return False, "LaTeX braces {} not allowed in SymPy mode. Use _sub (e.g., x_1)."
     incomplete_functions = ['sqrt(', 'log(', 'Integral(', 'Derivative(', 'Sum(', 'Limit(', 'sin(', 'cos(', 'tan(', 'cot(', 'sec(', 'csc(', 'asin(', 'acos(', 'atan(', 'sinh(', 'cosh(', 'tanh(', 'exp(']
     for func in incomplete_functions:
@@ -82,7 +82,7 @@ def update_latex():
         expr = parse_expr(parsed_formula, local_dict=local_dict, transformations=transformations)
         latex_str = sp.latex(expr, order='none')
         latex_str = re.sub(r'\\frac\{d\}\{d x\}\s*([a-zA-Z])', r'\\frac{d\1}{dx}', latex_str)
-        latex_str = re.sub(r'\\frac\{d\}\{d x\}\s*\\left\(([^)]+)\\right\)', r'\\frac{d(\\1)}{dx}', latex_str)
+        latex_str = re.sub(r'\\frac\{d\}\{d x\}\s*\\left\(([^)]+)\\right\)', r'\\frac{d(\\1)}{dx}", latex_str)
         st.session_state.latex = latex_str
         st.session_state.history.append((formula, latex_str))
         if len(st.session_state.history) > 10:
@@ -167,33 +167,35 @@ def latex_to_pdf(latex_str):
 def append_to_formula(symbol):
     temp_formula = st.session_state.formula
     mode = st.session_state.mode
-    if mode == "LaTeX":
-        text = symbol.get("LaTeX", symbol.get("SymPy", ""))
-    else:
-        text = symbol.get("SymPy", symbol.get("LaTeX", ""))
-        text = text.replace('_{}', '_').replace('^{}', '^')
+    text = symbol.get("LaTeX", symbol.get("SymPy", "")) if mode == "LaTeX" else symbol.get("SymPy", symbol.get("LaTeX", ""))
+    text = text.replace('_{}', '_').replace('^{}', '^') if mode == "SymPy" else text
     temp_formula += text
-    return temp_formula
+    st.session_state.temp_formula = temp_formula
+    st.session_state.formula = temp_formula
+    update_latex()
 
 def add_subscript(subscript, selected_param):
     if not subscript.strip():
         st.error("Subscript cannot be empty.")
-        return None
+        return
     if not re.match(r'^[\w\d]+$', subscript):
         st.error("Subscript must be alphanumeric.")
-        return None
+        return
     formula = st.session_state.formula
     if not formula.strip():
         st.error("Formula is empty. Enter a parameter to subscript.")
-        return None
+        return
     if st.session_state.mode == "LaTeX":
         st.warning("Subscript adding is optimized for SymPy mode. In LaTeX, use manual _{sub} syntax.")
-        return None
+        return
     param_positions = [m.start() for m in re.finditer(r'\b' + re.escape(selected_param) + r'\b', formula)]
     if param_positions:
         last_pos = param_positions[-1]
+        st.session_state.subscript_trigger = True
         new_formula = formula[:last_pos] + f"{selected_param}_{subscript}" + formula[last_pos + len(selected_param):]
-        return new_formula
+        st.session_state.temp_formula = new_formula
+        st.session_state.formula = new_formula
+        st.session_state.subscript_trigger = False
+        update_latex()
     else:
         st.error("Selected parameter not found in formula.")
-        return None
