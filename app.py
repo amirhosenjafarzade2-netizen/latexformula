@@ -81,8 +81,24 @@ def update_latex():
                                 lambda m: 'sp.Derivative(' + (m.group(1).strip() if m.group(1).strip() else '1') + ', x)', 
                                 parsed_formula)
         
-        # Protect denominators inside parentheses
-        parsed_formula = re.sub(r'\/\s*\(([^()]+)\)', r'/ ( ( \1 ) )', parsed_formula)
+        # Protect denominators in fractions by wrapping them in extra parentheses
+        def wrap_denominator(match):
+            denominator = match.group(1)
+            # Count nested parentheses to ensure proper wrapping
+            paren_count = 0
+            wrapped = ""
+            i = 0
+            while i < len(denominator):
+                char = denominator[i]
+                if char == '(':
+                    paren_count += 1
+                elif char == ')':
+                    paren_count -= 1
+                wrapped += char
+                i += 1
+            return f"/ ( ( {wrapped} ) )"
+        
+        parsed_formula = re.sub(r'\/\s*\((.*?)\)', wrap_denominator, parsed_formula)
         
         # Define local namespace with SymPy functions and symbols
         local_dict = {
@@ -101,7 +117,7 @@ def update_latex():
         expr = sp.sympify(parsed_formula, locals=local_dict, evaluate=False)
         
         # Convert to LaTeX with explicit grouping for fractions
-        latex_str = sp.latex(expr, mode='plain', fold_short_frac=False, long_frac_ratio=3)
+        latex_str = sp.latex(expr, mode='inline', fold_short_frac=False, long_frac_ratio=3)
         
         # Clean up LaTeX output for derivatives
         latex_str = re.sub(r'\\frac\{d\}\{d x\}\s*([a-zA-Z])', r'\\frac{d\1}{dx}', latex_str)
