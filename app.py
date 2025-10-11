@@ -4,12 +4,12 @@ from functools import partial
 import base64
 from io import BytesIO
 import matplotlib.pyplot as plt
-import matplotlib as mpl
+import matplotlib
 import streamlit.components.v1 as components
 import re
 import streamlit_ace as ace
 
-mpl.use('Agg')
+matplotlib.use('Agg')
 
 # Initialize session state
 if "formula" not in st.session_state:
@@ -20,28 +20,12 @@ if "history" not in st.session_state:
     st.session_state.history = []
 if "history_index" not in st.session_state:
     st.session_state.history_index = -1
-if "color_map" not in st.session_state:
-    st.session_state.color_map = {}  # {subexpression: hex_color}
 if "error_highlight" not in st.session_state:
     st.session_state.error_highlight = ""
 if "expr" not in st.session_state:
     st.session_state.expr = None
 if "mobile_mode" not in st.session_state:
-    st.session_state.mobile_mode = False  # Default to False to avoid user-agent issues
-
-# Custom ColoredLatexPrinter
-from sympy.printing.latex import LatexPrinter
-
-class ColoredLatexPrinter(LatexPrinter):
-    def __init__(self, colored_subexprs, settings=None):
-        super().__init__(settings=settings)
-        self.colored_subexprs = colored_subexprs
-
-    def _print(self, expr):
-        if expr in self.colored_subexprs:
-            color = self.colored_subexprs[expr]
-            return f"\\color{{{color}}}{{{super()._print(expr)}}}"
-        return super()._print(expr)
+    st.session_state.mobile_mode = False
 
 # Sanitize formula input
 def sanitize_formula(formula):
@@ -78,9 +62,6 @@ def is_valid_formula(formula):
     if re.search(r'(Integral|Derivative|Sum|Product|Limit)\(\s*,', formula):
         match = re.search(r'(Integral|Derivative|Sum|Product|Limit)\(\s*,', formula)
         return False, f"{match.group(1)} is missing required arguments.", (match.start(), match.end())
-    if re.search(r'[a-zA-Z]+_[a-zA-Z0-9]+', formula) and not re.search(r'(tau|mu|phi|rho|sigma|gamma|dot\{gamma\})_[a-zA-Z0-9]+', formula):
-        match = re.search(r'[a-zA-Z]+_[a-zA-Z0-9]+', formula)
-        return False, "Invalid subscripted symbol detected.", (match.start(), match.end())
     return True, "", None
 
 # Highlight error in formula
@@ -90,42 +71,9 @@ def highlight_error(formula, error_span):
     start, end = error_span
     return f"{formula[:start]}<span style='color: red;'>{formula[start:end]}</span>{formula[end:]}"
 
-# Validate subexpression with strict parsing
-def is_valid_subexpression(formula, subexpr):
-    allowed = {
-        "sqrt": sp.sqrt, "log": sp.log, "sin": sp.sin, "cos": sp.cos, "tan": sp.tan,
-        "cot": sp.cot, "sec": sp.sec, "csc": sp.csc, "arcsin": sp.asin, "arccos": sp.acos,
-        "arctan": sp.atan, "sinh": sp.sinh, "cosh": sp.cosh, "tanh": sp.tanh, "exp": sp.exp,
-        "Sum": sp.Sum, "Product": sp.Product, "Limit": sp.Limit, "Integral": sp.Integral,
-        "Derivative": sp.Derivative, "pi": sp.pi, "e": sp.E, "alpha": sp.Symbol("alpha"),
-        "beta": sp.Symbol("beta"), "gamma": sp.Symbol("gamma"), "delta": sp.Symbol("delta"),
-        "mu": sp.Symbol("mu"), "rho": sp.Symbol("rho"), "sigma": sp.Symbol("sigma"),
-        "tau": sp.Symbol("tau"), "phi": sp.Symbol("phi"), "omega": sp.Symbol("omega"),
-        "k": sp.Symbol("k"), "x": sp.Symbol("x"), "dot{gamma}": sp.Symbol("dot{gamma}"),
-        "tau_0": sp.Symbol("tau_0")
-    }
-    try:
-        parsed_formula = formula.replace("^", "**").replace("÷", "/")
-        parsed_subexpr = subexpr.replace("^", "**").replace("÷", "/")
-        expr = sp.sympify(parsed_formula, locals=allowed)
-        sub_expr = sp.sympify(parsed_subexpr, locals=allowed)
-        def contains_subexpr(expr, sub_expr):
-            if expr == sub_expr:
-                return True
-            for arg in expr.args:
-                if contains_subexpr(arg, sub_expr):
-                    return True
-            return False
-        valid = contains_subexpr(expr, sub_expr)
-        return valid, "" if valid else "Subexpression not found in formula."
-    except sp.SympifyError as e:
-        return False, f"Invalid subexpression: {str(e)}"
-    except Exception as e:
-        return False, f"Error validating subexpression: {str(e)}"
-
 # Cache LaTeX rendering
 @st.cache_data
-def get_latex(formula, color_map):
+def get_latex(formula):
     allowed = {
         "sqrt": sp.sqrt, "log": sp.log, "sin": sp.sin, "cos": sp.cos, "tan": sp.tan,
         "cot": sp.cot, "sec": sp.sec, "csc": sp.csc, "arcsin": sp.asin, "arccos": sp.acos,
@@ -160,69 +108,41 @@ def get_latex(formula, color_map):
         parsed_formula = re.sub(r'tau_0', 'sp.Symbol("tau_0")', parsed_formula)
 
         expr = sp.sympify(parsed_formula, locals=allowed)
-
-        colored_subexprs = {}
-        for subexpr_str, color in color_map.items():
-            try:
-                sub_expr = sp.sympify(subexpr_str.replace("^", "**").replace("÷", "/"), locals=allowed)
-                colored_subexprs[sub_expr] = color
-            except sp.SympifyError:
-                continue
-
-        settings = {'mul_symbol': 'times', 'fold_short_frac': False, 'order': 'none'}
-        printer = ColoredLatexPrinter(colored_subexprs, settings=settings)
-        latex_str = printer.doprint(expr)
-
+        latex_str = sp.latex(expr, order='none')
         latex_str = re.sub(r'\\frac\{d\}\{d x\}\s*([a-zA-Z])', r'\\frac{d\1}{dx}', latex_str)
         latex_str = re.sub(r'\\frac\{d\}\{d x\}\s*\\left\(([^)]+)\\right\)', r'\\frac{d(\\1)}{dx}', latex_str)
         latex_str = latex_str.replace(r'\dot{gamma}', r'\dot{\gamma}')
-
-        has_colors = bool(colored_subexprs)
-        if has_colors:
-            latex_str = f"\\usepackage{{color}}\n{latex_str}"
-
-        return latex_str, expr, has_colors
+        return latex_str, expr
     except sp.SympifyError as e:
-        return f"Parsing error: {str(e)}", None, False
-    except ValueError as e:
-        return f"Value error: {str(e)}", None, False
+        return f"Invalid formula: {str(e)}", None
     except Exception as e:
-        return f"Invalid formula: {str(e)}", None, False
+        return f"Invalid formula: {str(e)}", None
 
 # Cache image generation with dynamic sizing
 @st.cache_data
-def latex_to_image(latex_str, has_colors):
+def latex_to_image(latex_str):
     try:
-        formula_length = len(latex_str)
-        has_complex_structures = any(s in latex_str for s in [r'\frac', r'\sum', r'\int', r'\prod', r'\lim'])
-        width = min(10 + formula_length * 0.05, 20)
-        height = 2 + (1 if has_complex_structures else 0)
-
-        rc_dict = {'text.usetex': True}
-        if has_colors:
-            rc_dict['text.latex.preamble'] = r'\usepackage{color}'
-        with mpl.rc_context(rc_dict):
-            temp_fig = plt.figure(figsize=(width, height))
-            temp_ax = temp_fig.add_subplot(111)
-            temp_ax.axis('off')
-            t = temp_ax.text(0.5, 0.5, f'${latex_str}$', fontsize=20, ha='center', va='center')
-            temp_fig.canvas.draw()
-            bbox = t.get_window_extent(temp_fig.canvas.get_renderer())
-            bbox_inches = bbox.transformed(temp_fig.dpi_scale_trans.inverted())
-            plt.close(temp_fig)
-            width = bbox_inches.width + 0.3
-            height = bbox_inches.height + 0.2
-            fig = plt.figure(figsize=(width, height))
-            fig.patch.set_facecolor('white')
-            ax = fig.add_axes([0, 0, 1, 1])
-            ax.axis('off')
-            ax.text(0.5, 0.5, f'${latex_str}$', fontsize=20, ha='center', va='center')
-            buf = BytesIO()
-            plt.savefig(buf, format='png', dpi=300, bbox_inches='tight', pad_inches=0.05, facecolor='white')
-            plt.close(fig)
-            buf.seek(0)
-            img_b64 = base64.b64encode(buf.read()).decode()
-            return img_b64
+        temp_fig = plt.figure(figsize=(10, 2))
+        temp_ax = temp_fig.add_subplot(111)
+        temp_ax.axis('off')
+        t = temp_ax.text(0.5, 0.5, f'${latex_str}$', fontsize=20, ha='center', va='center')
+        temp_fig.canvas.draw()
+        bbox = t.get_window_extent(temp_fig.canvas.get_renderer())
+        bbox_inches = bbox.transformed(temp_fig.dpi_scale_trans.inverted())
+        plt.close(temp_fig)
+        width = bbox_inches.width + 0.3
+        height = bbox_inches.height + 0.2
+        fig = plt.figure(figsize=(width, height))
+        fig.patch.set_facecolor('white')
+        ax = fig.add_axes([0, 0, 1, 1])
+        ax.axis('off')
+        ax.text(0.5, 0.5, f'${latex_str}$', fontsize=20, ha='center', va='center')
+        buf = BytesIO()
+        plt.savefig(buf, format='png', dpi=300, bbox_inches='tight', pad_inches=0.05, facecolor='white')
+        plt.close(fig)
+        buf.seek(0)
+        img_b64 = base64.b64encode(buf.read()).decode()
+        return img_b64
     except Exception as e:
         st.error(f"Image generation error: {str(e)}")
         return None
@@ -244,10 +164,9 @@ def update_formula():
             st.error(error_msg)
             return
         st.session_state.error_highlight = ""
-        latex_str, expr, has_colors = get_latex(new_formula, st.session_state.color_map)
+        latex_str, expr = get_latex(new_formula)
         st.session_state.latex = latex_str
         st.session_state.expr = expr
-        st.session_state.has_colors = has_colors
 
 def undo():
     if st.session_state.history_index > 0:
@@ -267,7 +186,6 @@ def clear_formula():
     st.session_state.formula = ""
     st.session_state.formula_input = ""
     st.session_state.latex = ""
-    st.session_state.color_map = {}
     st.session_state.error_highlight = ""
     st.session_state.expr = None
     st.session_state.history.append("")
@@ -277,21 +195,6 @@ def append_to_formula(text):
     st.session_state.formula += text
     st.session_state.formula_input = st.session_state.formula
     update_formula()
-
-def add_color():
-    subexpr = sanitize_formula(st.session_state.color_subexpr)
-    color = st.session_state.color_picker
-    valid, error_msg = is_valid_subexpression(st.session_state.formula, subexpr)
-    if not valid:
-        st.error(error_msg)
-        return
-    st.session_state.color_map[subexpr] = color
-    update_formula()
-
-def remove_color(subexpr):
-    if subexpr in st.session_state.color_map:
-        del st.session_state.color_map[subexpr]
-        update_formula()
 
 # UI
 st.set_page_config(page_title="Advanced Formula to LaTeX Converter", layout="wide")
@@ -311,34 +214,10 @@ st.markdown("""
             padding: 8px;
         }
     }
-    .tooltip {
-        position: relative;
-        display: inline-block;
-    }
-    .tooltip .tooltiptext {
-        visibility: hidden;
-        width: 120px;
-        background-color: #555;
-        color: #fff;
-        text-align: center;
-        border-radius: 6px;
-        padding: 5px;
-        position: absolute;
-        z-index: 1;
-        bottom: 125%;
-        left: 50%;
-        margin-left: -60px;
-        opacity: 0;
-        transition: opacity 0.3s;
-    }
-    .tooltip:hover .tooltiptext {
-        visibility: visible;
-        opacity: 1;
-    }
 </style>
 """, unsafe_allow_html=True)
 
-# Formula input with syntax highlighting and placeholder
+# Formula input with syntax highlighting
 st.write("Enter your formula")
 formula_input = ace.st_ace(
     value=st.session_state.formula,
@@ -350,6 +229,7 @@ formula_input = ace.st_ace(
     placeholder="e.g., (x+2)/(x-1), sin(x^2), Integral(x^2, x)"
 )
 if formula_input != st.session_state.formula:
+    st.session_state.formula_input = formula_input
     update_formula()
 
 # Display error highlighting
@@ -364,25 +244,6 @@ with col_redo:
     st.button("Redo (Ctrl+Y)", on_click=redo, disabled=st.session_state.history_index >= len(st.session_state.history) - 1, key="redo", help="Redo last action")
 with col_clear:
     st.button("Clear", on_click=clear_formula, key="clear", help="Clear the formula")
-
-# Color selection UI
-with st.expander("Color Subexpressions", expanded=False):
-    st.write("Select a subexpression and color:")
-    col_subexpr, col_color, col_add = st.columns([3, 2, 1])
-    with col_subexpr:
-        st.text_input("Subexpression (e.g., (x+2))", key="color_subexpr")
-    with col_color:
-        st.color_picker("Choose color", key="color_picker")
-    with col_add:
-        st.button("Add Color", on_click=add_color, key="add_color", help="Add color to subexpression")
-    if st.session_state.color_map:
-        st.write("Current color assignments:")
-        for subexpr, color in st.session_state.color_map.items():
-            col1, col2 = st.columns([3, 1])
-            with col1:
-                st.write(f"{subexpr}: {color}")
-            with col2:
-                st.button("Remove", key=f"remove_{hash(subexpr)}", on_click=partial(remove_color, subexpr), help="Remove color")
 
 # Symbol buttons in collapsible sections
 num_cols = 3 if st.session_state.get("mobile_mode", False) else 5
@@ -460,14 +321,8 @@ st.text_area("LaTeX code", value=st.session_state.latex, height=100, key="latex_
 st.write("Rendered Formula:")
 if st.session_state.latex and not st.session_state.latex.startswith("Invalid formula"):
     try:
-        display_latex = st.session_state.latex
-        if "\\usepackage{color}" in display_latex:
-            display_latex = display_latex.replace("\\usepackage{color}\n", "")
-        st.latex(display_latex)
-        
-        # Generate image version
-        has_colors = hasattr(st.session_state, 'has_colors') and st.session_state.has_colors
-        img_b64 = latex_to_image(display_latex, has_colors)
+        st.latex(st.session_state.latex)
+        img_b64 = latex_to_image(st.session_state.latex)
         
         # JavaScript for clipboard operations
         copy_js = """
@@ -612,6 +467,3 @@ with st.expander("Example Formulas"):
     - `Integral(x^2, x)` → Integral of x²
     - `Sum(k^2, (k, 1, n))` → Summation of k² from 1 to n
     """)
-
-# Debugging: Display session state for troubleshooting
-# st.write("Debug: Session State:", st.session_state)
