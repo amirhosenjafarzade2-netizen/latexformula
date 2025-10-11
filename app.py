@@ -11,12 +11,10 @@ import re
 matplotlib.use('Agg')
 
 # Initialize session state
-if "formula" not in st.session_state:
-    st.session_state.formula = ""
-if "latex" not in st.session_state:
-    st.session_state.latex = ""
 if "temp_formula" not in st.session_state:
     st.session_state.temp_formula = ""
+if "latex" not in st.session_state:
+    st.session_state.latex = ""
 if "subscript_trigger" not in st.session_state:
     st.session_state.subscript_trigger = False
 
@@ -44,7 +42,7 @@ def is_valid_formula(formula):
 def update_latex():
     if st.session_state.subscript_trigger:
         return  # Skip update during subscript application
-    formula = st.session_state.formula
+    formula = st.session_state.temp_formula
     valid, error_msg = is_valid_formula(formula)
     if not valid:
         st.session_state.latex = f"Invalid formula: {error_msg}"
@@ -133,8 +131,12 @@ def latex_to_image(latex_str):
 
 # Function to append text to formula
 def append_to_formula(text):
-    st.session_state.temp_formula = st.session_state.formula + text
-    st.session_state.formula = st.session_state.temp_formula
+    st.session_state.temp_formula += text
+    update_latex()
+
+# Function to handle formula input change
+def on_formula_change():
+    st.session_state.temp_formula = st.session_state.input_formula
     update_latex()
 
 # Function to add subscript to last parameter
@@ -145,7 +147,7 @@ def add_subscript(subscript):
     if not re.match(r'^[\w\d]+$', subscript):
         st.error("Subscript must be alphanumeric.")
         return
-    formula = st.session_state.formula
+    formula = st.session_state.temp_formula
     if not formula.strip():
         st.error("Formula is empty. Enter a parameter to subscript.")
         return
@@ -154,7 +156,6 @@ def add_subscript(subscript):
         param, trailing = match.groups()
         st.session_state.subscript_trigger = True
         st.session_state.temp_formula = formula[:match.start(1)] + f"{param}_{{{subscript}}}" + trailing
-        st.session_state.formula = st.session_state.temp_formula
         st.session_state.subscript_trigger = False
         update_latex()
     else:
@@ -164,13 +165,15 @@ def add_subscript(subscript):
 st.title("Formula to LaTeX Converter")
 
 # Formula input
-st.text_input("Enter formula (e.g., x^2 + sqrt(y))", key="formula", value=st.session_state.formula, on_change=update_latex)
+st.text_input("Enter formula (e.g., x^2 + sqrt(y))", key="input_formula", value=st.session_state.temp_formula, on_change=on_formula_change)
 
-# Subscript input
+# Subscript input with form
 st.write("Add subscript to last parameter:")
-subscript_input = st.text_input("Enter subscript (e.g., 1, oil, gas)", key="subscript_input")
-if st.button("Apply Subscript", key="apply_subscript"):
-    add_subscript(subscript_input)
+with st.form(key="subscript_form"):
+    subscript_input = st.text_input("Enter subscript (e.g., 1, oil, gas)", key="subscript_input")
+    submit_button = st.form_submit_button("Apply Subscript")
+    if submit_button:
+        add_subscript(subscript_input)
 
 # Symbol selection
 st.write("Math tools:")
