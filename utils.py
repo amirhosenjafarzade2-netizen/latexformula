@@ -1,4 +1,3 @@
-# utils.py
 import sympy as sp
 from sympy.parsing.sympy_parser import parse_expr, standard_transformations, implicit_multiplication_application
 import re
@@ -92,7 +91,7 @@ def update_latex():
         expr = parse_expr(parsed_formula, local_dict=local_dict, transformations=transformations)
         latex_str = sp.latex(expr, order='none')
         latex_str = re.sub(r'\\frac\{d\}\{d x\}\s*([a-zA-Z])', r'\\frac{d\1}{dx}', latex_str)
-        latex_str = re.sub(r'\\frac\{d\}\{d x\}\s*\\left\(([^)]+)\\right\)', r'\\frac{d(\\1)}{dx}", latex_str)
+        latex_str = re.sub(r'\\frac\{d\}\{d x\}\s*\\left\(([^)]+)\\right\)', r'\\frac{d(\1)}{dx}', latex_str)
         st.session_state.latex = latex_str
         st.session_state.history.append((formula, latex_str))
         if len(st.session_state.history) > 10:
