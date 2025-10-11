@@ -20,12 +20,15 @@ if "latex" not in st.session_state:
 def is_valid_formula(formula):
     if not formula.strip():
         return False, "Formula is empty."
+    # Check for trailing operators
     if formula.strip()[-1] in ['+', '-', '*', '/', '^', '_']:
         return False, "Formula ends with an incomplete operator."
+    # Check for incomplete function calls
     incomplete_functions = ['sqrt(', 'log(', 'Integral(', 'Derivative(']
     for func in incomplete_functions:
         if formula.strip().endswith(func):
             return False, f"Incomplete function call: '{func}' is missing arguments."
+    # Check for unbalanced parentheses and square brackets
     paren_count = 0
     bracket_count = 0
     for char in formula:
@@ -41,10 +44,13 @@ def is_valid_formula(formula):
             return False, "Unbalanced parentheses or brackets in formula."
     if paren_count != 0 or bracket_count != 0:
         return False, "Unbalanced parentheses or brackets in formula."
+    # Check for consecutive commas
     if re.search(r',\s*,', formula):
         return False, "Invalid function arguments: consecutive commas detected."
+    # Check for empty function arguments
     if re.search(r'[\(\[]\s*,', formula):
         return False, "Invalid function arguments: empty argument detected."
+    # Check for incomplete Integral or Derivative
     if re.search(r'(Integral|Derivative)\(\s*,', formula):
         return False, "Integral/Derivative is missing the function to integrate/differentiate."
     return True, ""
@@ -88,44 +94,11 @@ def update_latex():
             "y": sp.Symbol('y')
         }
         
-        # Handle fractions explicitly
-        if '/' in parsed_formula:
-            # Split at the top-level division
-            def find_top_level_split(formula):
-                paren_count = 0
-                for i, char in enumerate(formula):
-                    if char == '(':
-                        paren_count += 1
-                    elif char == ')':
-                        paren_count -= 1
-                    elif char == '/' and paren_count == 0:
-                        return i
-                return -1
-            
-            split_idx = find_top_level_split(parsed_formula)
-            if split_idx != -1:
-                numerator = parsed_formula[:split_idx].strip()
-                denominator = parsed_formula[split_idx+1:].strip()
-                
-                # Parse numerator and denominator separately
-                num_expr = sp.sympify(numerator, locals=local_dict, evaluate=False)
-                denom_expr = sp.sympify(denominator, locals=local_dict, evaluate=False)
-                
-                # Create fraction expression
-                expr = num_expr / denom_expr
-                
-                # Generate LaTeX with explicit fraction
-                num_latex = sp.latex(num_expr, mode='inline', fold_short_frac=False)
-                denom_latex = sp.latex(denom_expr, mode='inline', fold_short_frac=False)
-                latex_str = f"\\frac{{{num_latex}}}{{{denom_latex}}}"
-            else:
-                # No division, parse normally
-                expr = sp.sympify(parsed_formula, locals=local_dict, evaluate=False)
-                latex_str = sp.latex(expr, mode='inline', fold_short_frac=False, long_frac_ratio=3)
-        else:
-            # No division, parse normally
-            expr = sp.sympify(parsed_formula, locals=local_dict, evaluate=False)
-            latex_str = sp.latex(expr, mode='inline', fold_short_frac=False, long_frac_ratio=3)
+        # Parse expression with evaluate=False to preserve structure
+        expr = sp.sympify(parsed_formula, locals=local_dict, evaluate=False)
+        
+        # Convert to LaTeX with order='none' to preserve input order
+        latex_str = sp.latex(expr, order='none')
         
         # Clean up LaTeX output for derivatives
         latex_str = re.sub(r'\\frac\{d\}\{d x\}\s*([a-zA-Z])', r'\\frac{d\1}{dx}', latex_str)
@@ -140,10 +113,6 @@ def update_latex():
 # Function to create image from LaTeX with proportional width
 def latex_to_image(latex_str):
     try:
-        # Validate LaTeX string
-        if not latex_str or '$' in latex_str:
-            raise ValueError("Invalid LaTeX string: contains unexpected '$' or is empty")
-        
         # Create temporary figure to measure text width
         temp_fig = plt.figure(figsize=(10, 2))
         temp_ax = temp_fig.add_subplot(111)
@@ -352,4 +321,27 @@ if st.session_state.latex and not st.session_state.latex.startswith("Invalid for
     except Exception as e:
         st.error(f"Unable to render LaTeX: {str(e)}")
 else:
-    st.write("Enter a valid formula to see the LaTeX rendering.")
+    st.write("Enter a valid formula to see the LaTeX rendering.")   solution might be because SymPy interprets brackets [...] as Matrix or Indexing, not grouping parentheses, even though you later replace [ and ] with ( and ) after parsing.
+
+Let’s see what’s happening:
+
+You input:[(x+2) * (x+6)] / [(x+4) + (x/5)]
+After your replacement step, it becomes:That’s correct, but the problem is you perform the replacement before parsing, which should work — so the next likely issue is how sympy.sympify(..., evaluate=False) treats division with parentheses: it sometimes flattens or merges terms if the structure isn’t perfectly nested.
+
+When you type that, SymPy parses it as wrong instead of right because of how the inner addition is serialized by the printer.
+
+✅ The fix: wrap the entire denominator explicitly in a sp.Paren(...) before sympifying.
+
+Add this line right before expr = sp.sympify(...):# Protect denominators inside parentheses
+parsed_formula = re.sub(r'\/\s*\(([^()]+)\)', r'/ ( ( \1 ) )', parsed_formula)
+That ensures that anything like /((x+4)+(x/5)) is double-parenthesized before parsing, forcing SymPy to preserve the grouping.
+
+Alternatively — a cleaner and more reliable fix is to tell SymPy to print with explicit parentheses in denominators by using:latex_str = sp.latex(expr, mode='plain', fold_short_frac=False, long_frac_ratio=3)
+Replace your current sp.latex(expr, order='none') line with that.
+
+That will keep the denominator grouping correctly when LaTeX is generated, producingtrue Best combo (robust solution):
+
+Replace this part:expr = sp.sympify(parsed_formula, locals=local_dict, evaluate=False)
+latex_str = sp.latex(expr, order='none')
+with expr = sp.sympify(parsed_formula, locals=local_dict, evaluate=False)
+latex_str = sp.latex(expr, mode='plain', fold_short_frac=False, long_frac_ratio=3)
