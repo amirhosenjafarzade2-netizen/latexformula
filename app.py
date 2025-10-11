@@ -38,17 +38,15 @@ def update_latex():
         st.error(error_msg)
         return
 
-    # Auto-detect LaTeX input
+    # Auto-detect if already LaTeX
     if formula.startswith("\\") or re.search(r"\\frac|\\int|\\sqrt|\\left", formula):
         st.session_state.latex = formula
         return
 
     try:
-        # Step 1: Find all subscript variables (e.g., x_2, var_name)
+        # Step 1: Handle subscripted variables
         subscript_pattern = r'\b([a-zA-Z]+)_([a-zA-Z0-9]+)\b'
         subscript_vars = set(re.findall(subscript_pattern, formula))
-        
-        # Step 2: Create SymPy symbols with underscores directly
         local_dict = {
             "sp": sp,
             "sqrt": sp.sqrt,
@@ -58,27 +56,37 @@ def update_latex():
             "tan": sp.tan,
             "exp": sp.exp
         }
-        
-        # Add subscripted variables as symbols
         for base, subscript in subscript_vars:
             var_name = f"{base}_{subscript}"
             local_dict[var_name] = sp.Symbol(var_name)
-        
-        # Step 3: Replace ^ with ** but DON'T touch underscores
+
+        # Step 2: Replace ^ with ** for exponentiation
         parsed_formula = formula.replace("^", "**")
-        
-        # Step 4: Parse the formula
-        transformations = standard_transformations + (
-            implicit_multiplication_application,
-            convert_xor
-        )
 
-        expr = parse_expr(parsed_formula, local_dict=local_dict, transformations=transformations)
-        
-        # Step 5: Convert to LaTeX
+        # Step 3: Detect if there's an '=' (equation)
+        if "=" in parsed_formula:
+            lhs, rhs = parsed_formula.split("=", 1)
+
+            transformations = standard_transformations + (
+                implicit_multiplication_application,
+                convert_xor
+            )
+
+            lhs_expr = parse_expr(lhs.strip(), local_dict=local_dict, transformations=transformations)
+            rhs_expr = parse_expr(rhs.strip(), local_dict=local_dict, transformations=transformations)
+
+            expr = sp.Eq(lhs_expr, rhs_expr)
+        else:
+            transformations = standard_transformations + (
+                implicit_multiplication_application,
+                convert_xor
+            )
+            expr = parse_expr(parsed_formula, local_dict=local_dict, transformations=transformations)
+
+        # Step 4: Convert to LaTeX
         latex_str = sp.latex(expr, order='none')
-
         st.session_state.latex = latex_str
+
     except Exception as e:
         st.session_state.latex = f"Invalid formula: {str(e)}"
         st.error(f"Invalid formula: {str(e)}")
