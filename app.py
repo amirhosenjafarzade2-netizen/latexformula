@@ -24,7 +24,7 @@ def is_valid_formula(formula):
     if formula.strip()[-1] in ['+', '-', '*', '/', '^', '_']:
         return False, "Formula ends with an incomplete operator."
     # Check for incomplete function calls (e.g., 'sqrt(', 'Integral(')
-    incomplete_functions = ['sqrt(', 'log(', 'Integral(', 'Derivative(']
+    incomplete_functions = ['sqrt(', 'log(', 'Integral(', 'Derivative(', 'Sum(', 'Limit(', 'sin(', 'cos(', 'tan(', 'cot(', 'sec(', 'csc(', 'asin(', 'acos(', 'atan(', 'sinh(', 'cosh(', 'tanh(', 'exp(']
     for func in incomplete_functions:
         if formula.strip().endswith(func):
             return False, f"Incomplete function call: '{func}' is missing arguments."
@@ -38,7 +38,7 @@ def is_valid_formula(formula):
     if re.search(r'\(\s*,', formula):
         return False, "Invalid function arguments: empty argument detected."
     # Check for incomplete Integral or Derivative (missing integrand/function)
-    if re.search(r'(Integral|Derivative)\(\s*,', formula):
+    if re.search(r'(Integral|Derivative)\(\s*,\s*\w+\s*\)', formula):
         return False, "Integral/Derivative is missing the function to integrate/differentiate."
     return True, ""
 
@@ -58,12 +58,12 @@ def update_latex():
         parsed_formula = re.sub(r'\blog\(', 'sp.log(', parsed_formula)
         
         # Replace Integral with valid SymPy syntax, auto-insert '1' if integrand is empty or whitespace
-        parsed_formula = re.sub(r'Integral\(\s*([^,)]*?)\s*,\s*x\s*\)', 
-                                lambda m: 'sp.Integral(' + (m.group(1).strip() if m.group(1).strip() else '1') + ', x)', 
+        parsed_formula = re.sub(r'Integral\(\s*([^,)]*?)\s*,\s*(\w+)\s*\)', 
+                                lambda m: 'sp.Integral(' + (m.group(1).strip() if m.group(1).strip() else '1') + ', ' + m.group(2) + ')', 
                                 parsed_formula)
         # Same for Derivative
-        parsed_formula = re.sub(r'Derivative\(\s*([^,)]*?)\s*,\s*x\s*\)', 
-                                lambda m: 'sp.Derivative(' + (m.group(1).strip() if m.group(1).strip() else '1') + ', x)', 
+        parsed_formula = re.sub(r'Derivative\(\s*([^,)]*?)\s*,\s*(\w+)\s*\)', 
+                                lambda m: 'sp.Derivative(' + (m.group(1).strip() if m.group(1).strip() else '1') + ', ' + m.group(2) + ')', 
                                 parsed_formula)
         
         # Define local namespace with SymPy functions
@@ -74,7 +74,21 @@ def update_latex():
             "sin": sp.sin,
             "cos": sp.cos,
             "tan": sp.tan,
-            "exp": sp.exp
+            "cot": sp.cot,
+            "sec": sp.sec,
+            "csc": sp.csc,
+            "asin": sp.asin,
+            "acos": sp.acos,
+            "atan": sp.atan,
+            "sinh": sp.sinh,
+            "cosh": sp.cosh,
+            "tanh": sp.tanh,
+            "exp": sp.exp,
+            "Sum": sp.Sum,
+            "Limit": sp.Limit,
+            "oo": sp.oo,
+            "pi": sp.pi,
+            "e": sp.E
         }
         expr = sp.sympify(parsed_formula, locals=local_dict)
         # Use latex with order='none' to preserve input order
@@ -141,23 +155,74 @@ st.title("Formula to LaTeX Converter")
 # First entry bar: Formula input
 st.text_input("Enter formula (e.g., x^2 + sqrt(y))", key="formula", on_change=update_latex)
 
-# Buttons for symbols
+# Tabs for symbol categories
 st.write("Math tools:")
-cols = st.columns(8)
-buttons = [
-    ("√", "sqrt()"),
-    ("÷", "/"),
-    ("∫", "Integral(1, x)"),
-    ("d/dx", "Derivative(1, x)"),
-    ("log", "log()"),
-    ("×", "*"),
-    ("^", "^"),
-    ("_", "_")
+tab_names = ["Basic", "Brackets", "Trigonometry", "Hyperbolic", "Calculus", "Constants", "Greek", "Engineering", "Subscripts"]
+tabs = st.tabs(tab_names)
+
+# Define buttons for each category
+buttons_basic = [
+    ("√", "sqrt()"), ("log", "log()"), ("exp", "exp()"),
+    ("÷", "/"), ("×", "*"), ("^", "^"), ("_", "_"), ("+", "+"), ("-", "-")
 ]
 
-for i, (label, text) in enumerate(buttons):
-    with cols[i]:
-        st.button(label, on_click=partial(append_to_formula, text))
+buttons_brackets = [
+    ("(", "("), (")", ")"), ("[", "["), ("]", "]"), ("{", "{"), ("}", "}"),
+]
+
+buttons_trig = [
+    ("sin", "sin()"), ("cos", "cos()"), ("tan", "tan()"), ("cot", "cot()"),
+    ("sec", "sec()"), ("csc", "csc()"), ("asin", "asin()"), ("acos", "acos()"), ("atan", "atan()")
+]
+
+buttons_hyperbolic = [
+    ("sinh", "sinh()"), ("cosh", "cosh()"), ("tanh", "tanh()")
+]
+
+buttons_calculus = [
+    ("∫", "Integral(, x)"), ("d/dx", "Derivative(, x)"),
+    ("∑", "Sum(, (n, 0, oo))"), ("lim", "Limit(, x, 0)")
+]
+
+buttons_constants = [
+    ("π", "pi"), ("e", "e"), ("∞", "oo")
+]
+
+buttons_greek = [
+    ("α", "alpha"), ("β", "beta"), ("γ", "gamma"), ("δ", "delta"), ("Δ", "Delta"),
+    ("ε", "epsilon"), ("ζ", "zeta"), ("η", "eta"), ("θ", "theta"), ("Θ", "Theta"),
+    ("ι", "iota"), ("κ", "kappa"), ("λ", "lambda"), ("Λ", "Lambda"), ("μ", "mu"),
+    ("ν", "nu"), ("ξ", "xi"), ("π", "pi"), ("ρ", "rho"), ("σ", "sigma"),
+    ("Σ", "Sigma"), ("τ", "tau"), ("φ", "phi"), ("Φ", "Phi"), ("ω", "omega"), ("Ω", "Omega")
+]
+
+buttons_engineering = [
+    ("Ω (ohm)", "Omega"), ("µ (micro)", "mu"), ("° (degree)", "degree"),
+    ("≈", "approx"), ("≠", "ne"), ("≥", "ge"), ("≤", "le")
+]
+
+buttons_subscripts = [
+    ("₀", "_0"), ("₁", "_1"), ("₂", "_2"), ("₃", "_3"), ("₄", "_4"),
+    ("₅", "_5"), ("₆", "_6"), ("₇", "_7"), ("₈", "_8"), ("₉", "_9")
+]
+
+# Map tabs to button lists
+button_lists = [buttons_basic, buttons_brackets, buttons_trig, buttons_hyperbolic, buttons_calculus, buttons_constants, buttons_greek, buttons_engineering, buttons_subscripts]
+
+# Function to display buttons in grid
+def display_buttons(buttons, num_cols=8):
+    for i in range(0, len(buttons), num_cols):
+        cols = st.columns(min(num_cols, len(buttons) - i))
+        for j, col in enumerate(cols):
+            if i + j < len(buttons):
+                label, text = buttons[i + j]
+                with col:
+                    st.button(label, on_click=partial(append_to_formula, text))
+
+# Display buttons in each tab
+for idx, tab in enumerate(tabs):
+    with tab:
+        display_buttons(button_lists[idx])
 
 # Second entry bar: LaTeX version (editable)
 st.text_input("LaTeX version", key="latex")
