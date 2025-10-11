@@ -147,18 +147,15 @@ buttons = [
 
 for i, (label, text) in enumerate(buttons):
     with cols[i]:
-        # Special styling for subscript button
-        if label == "ₓ":
-            button_color = "🟢" if st.session_state.subscript_mode else "🔴"
-            st.button(f"{button_color} {label}", on_click=partial(append_to_formula, text), key=f"btn_{i}")
-        else:
-            st.button(label, on_click=partial(append_to_formula, text), key=f"btn_{i}")
+        st.button(label, on_click=partial(append_to_formula, text), key=f"btn_{i}")
 
-# Add a separate toggle button for subscript mode
+# Add a toggle switch for subscript mode
 col1, col2, col3 = st.columns([1, 2, 1])
 with col1:
-    button_color = "🟢" if st.session_state.subscript_mode else "🔴"
-    st.button(f"{button_color} Toggle Subscript", on_click=toggle_subscript_mode, key="toggle_mode")
+    subscript_toggle = st.toggle("🟢 Subscript Mode", value=st.session_state.subscript_mode, key="sub_toggle")
+    if subscript_toggle != st.session_state.subscript_mode:
+        st.session_state.subscript_mode = subscript_toggle
+        update_latex()
 
 st.text_input("LaTeX version", key="latex")
 
