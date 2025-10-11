@@ -14,6 +14,8 @@ matplotlib.use('Agg')
 # Initialize session state
 if "formula" not in st.session_state:
     st.session_state.formula = ""
+if "formula_input" not in st.session_state:
+    st.session_state.formula_input = ""
 if "latex" not in st.session_state:
     st.session_state.latex = ""
 if "history" not in st.session_state:
@@ -192,8 +194,7 @@ def clear_formula():
     st.session_state.history_index += 1
 
 def append_to_formula(text):
-    st.session_state.formula += text
-    st.session_state.formula_input = st.session_state.formula
+    st.session_state.formula_input += text
     update_formula()
 
 # UI
@@ -219,18 +220,16 @@ st.markdown("""
 
 # Formula input with syntax highlighting
 st.write("Enter your formula")
-formula_input = ace.st_ace(
-    value=st.session_state.formula,
+ace.st_ace(
+    value=st.session_state.formula_input,
     language="python",
     theme="monokai",
     key="formula_input",
     auto_update=False,
     height=100,
-    placeholder="e.g., (x+2)/(x-1), sin(x^2), Integral(x^2, x)"
+    placeholder="e.g., (x+2)/(x-1), sin(x^2), Integral(x^2, x)",
+    on_change=update_formula
 )
-if formula_input != st.session_state.formula:
-    st.session_state.formula_input = formula_input
-    update_formula()
 
 # Display error highlighting
 if st.session_state.error_highlight:
