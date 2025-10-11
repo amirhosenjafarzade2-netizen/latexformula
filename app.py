@@ -55,23 +55,9 @@ def is_valid_formula(formula):
         return False, "Integral/Derivative is missing the function to integrate/differentiate."
     return True, ""
 
-# Function to reorder multiplication terms (constants before variables)
-def reorder_multiplication(expr):
-    if expr.is_Mul:  # Check if the expression is a multiplication
-        args = list(expr.args)
-        # Separate constants and non-constants
-        constants = [arg for arg in args if arg.is_Number or arg.is_Rational]
-        non_constants = [arg for arg in args if not (arg.is_Number or arg.is_Rational)]
-        # Reorder: constants first, then non-constants
-        reordered_args = constants + non_constants
-        if reordered_args != list(expr.args):  # Only reconstruct if order changed
-            return sp.Mul(*reordered_args, evaluate=False)
-    # Recursively apply to sub-expressions
-    return expr.func(*[reorder_multiplication(arg) for arg in expr.args], evaluate=False)
-
 # Function to update LaTeX from formula
 def update_latex():
-    formula = st.session_state.formula.strip()  # Sanitize input by stripping whitespace
+    formula = st.session_state.formula
     valid, error_msg = is_valid_formula(formula)
     if not valid:
         st.session_state.latex = f"Invalid formula: {error_msg}"
@@ -95,9 +81,6 @@ def update_latex():
                                 lambda m: 'sp.Derivative(' + (m.group(1).strip() if m.group(1).strip() else '1') + ', x)', 
                                 parsed_formula)
         
-        # Log the parsed formula for debugging
-        st.write(f"Debug: Parsed formula = {parsed_formula}")
-        
         # Define local namespace with SymPy functions and symbols
         local_dict = {
             "sp": sp,
@@ -112,21 +95,10 @@ def update_latex():
         }
         
         # Parse expression with evaluate=False to preserve structure
-        try:
-            expr = sp.sympify(parsed_formula, locals=local_dict, evaluate=False)
-        except Exception as parse_error:
-            # Fallback: Try parsing with evaluate=True
-            try:
-                expr = sp.sympify(parsed_formula, locals=local_dict, evaluate=True)
-                st.warning("Parsed with evaluation enabled due to initial parsing error. Some terms may be simplified.")
-            except Exception as fallback_error:
-                raise Exception(f"Parsing failed: {str(fallback_error)}")
+        expr = sp.sympify(parsed_formula, locals=local_dict, evaluate=False)
         
-        # Reorder multiplication terms
-        reordered_expr = reorder_multiplication(expr)
-        
-        # Convert to LaTeX with order='none' to preserve input order (except for multiplication)
-        latex_str = sp.latex(reordered_expr, order='none')
+        # Convert to LaTeX with order='none' to preserve input order
+        latex_str = sp.latex(expr, order='none')
         
         # Clean up LaTeX output for derivatives
         latex_str = re.sub(r'\\frac\{d\}\{d x\}\s*([a-zA-Z])', r'\\frac{d\1}{dx}', latex_str)
@@ -184,7 +156,7 @@ def append_to_formula(text):
 st.title("Formula to LaTeX Converter")
 
 # First entry bar: Formula input
-st.text_input("Enter formula (e.g., ((sqrt(x) / x +2) / 5) / ((x*2) + (x*6)))", key="formula", on_change=update_latex)
+st.text_input("Enter formula (e.g., ((x+2)*(x+6))/((x+4)+(x/5)))", key="formula", on_change=update_latex)
 
 # Buttons for symbols
 st.write("Math tools:")
