@@ -15,10 +15,8 @@ if "formula" not in st.session_state:
     st.session_state.formula = ""
 if "latex" not in st.session_state:
     st.session_state.latex = ""
-if "temp_formula" not in st.session_state:
-    st.session_state.temp_formula = ""
-if "subscript_trigger" not in st.session_state:
-    st.session_state.subscript_trigger = False
+if "pending_subscript" not in st.session_state:
+    st.session_state.pending_subscript = None
 
 # Function to validate formula
 def is_valid_formula(formula):
@@ -42,13 +40,10 @@ def is_valid_formula(formula):
 
 # Function to update LaTeX from formula
 def update_latex():
-    if st.session_state.subscript_trigger:
-        return  # Skip update during subscript application
     formula = st.session_state.formula
     valid, error_msg = is_valid_formula(formula)
     if not valid:
         st.session_state.latex = f"Invalid formula: {error_msg}"
-        st.error(error_msg)
         return
     try:
         parsed_formula = formula.replace("^", "**")
@@ -100,7 +95,6 @@ def update_latex():
     except Exception as e:
         error_msg = f"Invalid formula: {str(e)}"
         st.session_state.latex = error_msg
-        st.error(error_msg)
 
 # Function to create image from LaTeX
 def latex_to_image(latex_str):
@@ -133,44 +127,52 @@ def latex_to_image(latex_str):
 
 # Function to append text to formula
 def append_to_formula(text):
-    st.session_state.temp_formula = st.session_state.formula + text
-    st.session_state.formula = st.session_state.temp_formula
-    update_latex()
+    st.session_state.formula = st.session_state.formula + text
 
-# Function to add subscript to last parameter
-def add_subscript(subscript):
+# Function to apply pending subscript
+def apply_subscript_to_formula(subscript):
+    st.session_state.pending_subscript = subscript
+
+# Check if we need to apply a subscript from previous run
+if st.session_state.pending_subscript is not None:
+    subscript = st.session_state.pending_subscript
+    formula = st.session_state.formula
+    
     if not subscript.strip():
         st.error("Subscript cannot be empty.")
-        return
-    if not re.match(r'^[\w\d]+$', subscript):
+    elif not re.match(r'^[\w\d]+$', subscript):
         st.error("Subscript must be alphanumeric.")
-        return
-    formula = st.session_state.formula
-    if not formula.strip():
+    elif not formula.strip():
         st.error("Formula is empty. Enter a parameter to subscript.")
-        return
-    match = re.search(r'(\w+)([^\w]*)$', formula)
-    if match:
-        param, trailing = match.groups()
-        st.session_state.subscript_trigger = True
-        st.session_state.temp_formula = formula[:match.start(1)] + f"{param}_{{{subscript}}}" + trailing
-        st.session_state.formula = st.session_state.temp_formula
-        st.session_state.subscript_trigger = False
-        update_latex()
     else:
-        st.error("No valid parameter found to subscript.")
+        match = re.search(r'(\w+)([^\w]*)$', formula)
+        if match:
+            param, trailing = match.groups()
+            new_formula = formula[:match.start(1)] + f"{param}_{{{subscript}}}" + trailing
+            st.session_state.formula = new_formula
+        else:
+            st.error("No valid parameter found to subscript.")
+    
+    # Clear the pending subscript
+    st.session_state.pending_subscript = None
+    st.rerun()
 
 # UI
 st.title("Formula to LaTeX Converter")
 
 # Formula input
-st.text_input("Enter formula (e.g., x^2 + sqrt(y))", key="formula", value=st.session_state.formula, on_change=update_latex)
+formula_value = st.text_input("Enter formula (e.g., x^2 + sqrt(y))", value=st.session_state.formula, key="formula_input")
+
+# Update formula in session state if changed
+if formula_value != st.session_state.formula:
+    st.session_state.formula = formula_value
+    update_latex()
 
 # Subscript input
 st.write("Add subscript to last parameter:")
 subscript_input = st.text_input("Enter subscript (e.g., 1, oil, gas)", key="subscript_input")
 if st.button("Apply Subscript", key="apply_subscript"):
-    add_subscript(subscript_input)
+    apply_subscript_to_formula(subscript_input)
 
 # Symbol selection
 st.write("Math tools:")
@@ -233,11 +235,14 @@ for idx, tab in enumerate(tabs):
         if selected_symbol:
             for label, text in symbol_lists[idx]:
                 if label == selected_symbol:
-                    st.button(f"Insert {label}", key=f"btn_{tab_names[idx].lower()}_{text}_{idx}", on_click=partial(append_to_formula, text))
+                    if st.button(f"Insert {label}", key=f"btn_{tab_names[idx].lower()}_{text}_{idx}"):
+                        append_to_formula(text)
+                        update_latex()
+                        st.rerun()
                     break
 
 # LaTeX output
-st.text_input("LaTeX version", key="latex")
+st.text_input("LaTeX version", value=st.session_state.latex, key="latex_output", disabled=True)
 
 # Render LaTeX and copy buttons
 st.write("Rendered:")
