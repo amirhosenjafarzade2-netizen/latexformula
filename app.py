@@ -27,9 +27,7 @@ if "error_highlight" not in st.session_state:
 if "expr" not in st.session_state:
     st.session_state.expr = None
 if "mobile_mode" not in st.session_state:
-    # Detect mobile based on user-agent
-    user_agent = getattr(st, 'user_agent', None)
-    st.session_state.mobile_mode = user_agent and "Mobile" in user_agent
+    st.session_state.mobile_mode = False  # Default to False to avoid user-agent issues
 
 # Custom ColoredLatexPrinter
 from sympy.printing.latex import LatexPrinter
@@ -376,7 +374,7 @@ with st.expander("Color Subexpressions", expanded=False):
     with col_color:
         st.color_picker("Choose color", key="color_picker")
     with col_add:
-        st.button("Add Color", on_click=add_color, key="add_color", help="Add color to subexpression", args={"aria-label": "Add color to selected subexpression"})
+        st.button("Add Color", on_click=add_color, key="add_color", help="Add color to subexpression")
     if st.session_state.color_map:
         st.write("Current color assignments:")
         for subexpr, color in st.session_state.color_map.items():
@@ -384,7 +382,7 @@ with st.expander("Color Subexpressions", expanded=False):
             with col1:
                 st.write(f"{subexpr}: {color}")
             with col2:
-                st.button("Remove", key=f"remove_{hash(subexpr)}", on_click=partial(remove_color, subexpr), help="Remove color", args={"aria-label": f"Remove color from {subexpr}"})
+                st.button("Remove", key=f"remove_{hash(subexpr)}", on_click=partial(remove_color, subexpr), help="Remove color")
 
 # Symbol buttons in collapsible sections
 num_cols = 3 if st.session_state.get("mobile_mode", False) else 5
@@ -406,7 +404,7 @@ with st.expander("Mathematical Symbols", expanded=True):
     ]
     for i, (label, text, tooltip) in enumerate(buttons):
         with cols[i % num_cols]:
-            st.button(label, on_click=partial(append_to_formula, text), key=f"math_{i}", help=tooltip, args={"aria-label": tooltip})
+            st.button(label, on_click=partial(append_to_formula, text), key=f"math_{i}", help=tooltip)
 
 with st.expander("Trigonometric Functions"):
     cols_trig = st.columns(num_cols)
@@ -423,7 +421,7 @@ with st.expander("Trigonometric Functions"):
     ]
     for i, (label, text, tooltip) in enumerate(trig_buttons):
         with cols_trig[i % num_cols]:
-            st.button(label, on_click=partial(append_to_formula, text), key=f"trig_{i}", help=tooltip, args={"aria-label": tooltip})
+            st.button(label, on_click=partial(append_to_formula, text), key=f"trig_{i}", help=tooltip)
 
 with st.expander("Hyperbolic Functions"):
     cols_hyp = st.columns(min(num_cols, 3))
@@ -434,7 +432,7 @@ with st.expander("Hyperbolic Functions"):
     ]
     for i, (label, text, tooltip) in enumerate(hyp_buttons):
         with cols_hyp[i % min(num_cols, 3)]:
-            st.button(label, on_click=partial(append_to_formula, text), key=f"hyp_{i}", help=tooltip, args={"aria-label": tooltip})
+            st.button(label, on_click=partial(append_to_formula, text), key=f"hyp_{i}", help=tooltip)
 
 with st.expander("Greek and Engineering Symbols"):
     cols_eng = st.columns(num_cols)
@@ -452,7 +450,7 @@ with st.expander("Greek and Engineering Symbols"):
     ]
     for i, (label, text, tooltip) in enumerate(eng_buttons):
         with cols_eng[i % num_cols]:
-            st.button(label, on_click=partial(append_to_formula, text), key=f"eng_{i}", help=tooltip, args={"aria-label": tooltip})
+            st.button(label, on_click=partial(append_to_formula, text), key=f"eng_{i}", help=tooltip)
 
 # LaTeX output and rendering
 st.write("LaTeX Output:")
@@ -614,3 +612,6 @@ with st.expander("Example Formulas"):
     - `Integral(x^2, x)` → Integral of x²
     - `Sum(k^2, (k, 1, n))` → Summation of k² from 1 to n
     """)
+
+# Debugging: Display session state for troubleshooting
+# st.write("Debug: Session State:", st.session_state)
