@@ -1,12 +1,13 @@
 import streamlit as st
 import streamlit.components.v1 as components
-import re  # Added to fix NameError
+import re
 from utils import (is_valid_formula, get_locals, update_latex, sync_to_sympy,
                   latex_to_image, latex_to_pdf, append_to_formula, add_subscript)
 from symbols import (symbols_basic, symbols_brackets, symbols_trig, symbols_hyperbolic,
                     symbols_calculus, symbols_constants, symbols_greek, symbols_engineering,
                     symbols_petroleum)
 import logging
+import base64
 
 # Set up logging
 logging.basicConfig(level=logging.DEBUG)
@@ -53,21 +54,17 @@ try:
 
     for idx, tab in enumerate(tabs[:9]):  # Basic to Petroleum
         with tab:
-            with st.form(key=f"symbol_form_{tab_names[idx]}"):
-                symbols = symbol_lists[idx]
-                num_cols = min(5, len(symbols))
-                cols = st.columns(num_cols) if num_cols > 0 else [st]
-                selected_symbol = None
-                for i, symbol in enumerate(symbols):
-                    col_idx = i % num_cols
-                    with cols[col_idx]:
-                        if st.form_submit_button(symbol["label"], key=f"btn_{tab_names[idx]}_{i}"):
-                            selected_symbol = symbol
-                            logger.debug(f"Button clicked: {symbol['label']}")
-                if selected_symbol:
-                    append_to_formula(selected_symbol)
-                    st.session_state.formula = st.session_state.temp_formula
-                    st.rerun()
+            symbols = symbol_lists[idx]
+            num_cols = min(5, len(symbols))
+            cols = st.columns(num_cols) if num_cols > 0 else [st]
+            for i, symbol in enumerate(symbols):
+                col_idx = i % num_cols
+                with cols[col_idx]:
+                    if st.button(symbol["label"], key=f"btn_{tab_names[idx]}_{i}"):
+                        append_to_formula(symbol)
+                        st.session_state.temp_formula = st.session_state.temp_formula
+                        update_latex()
+                        st.rerun()
 
     # Subscript
     parameters = re.findall(r'\b[a-zA-Z]\w*(?:_\w+)?\b', st.session_state.formula)
@@ -78,7 +75,8 @@ try:
             subscript_input = st.text_input("Enter subscript (e.g., 1, oil)", key="subscript_input")
             if st.form_submit_button("Apply Subscript", key="apply_subscript"):
                 add_subscript(subscript_input, selected_param)
-                st.session_state.formula = st.session_state.temp_formula
+                st.session_state.temp_formula = st.session_state.temp_formula
+                update_latex()
                 st.rerun()
 
     # Matrices
@@ -101,7 +99,6 @@ try:
                         matrix_content = " \\\\ ".join(" & ".join(row) for row in elements if any(row))
                         matrix = f"\\begin{{{matrix_type}}} {matrix_content} \\end{{{matrix_type}}}"
                         st.session_state.temp_formula = st.session_state.formula + matrix
-                        st.session_state.formula = st.session_state.temp_formula
                         update_latex()
                         logger.debug(f"Matrix inserted: {matrix}")
                         st.rerun()
@@ -118,14 +115,13 @@ try:
                     selected_chem = None
                     for i, c in enumerate(chem):
                         with cols[i % 3]:
-                            if st.form_submit_button(c, key=f"chem_btn_{i}"):
+                            if st.button(c, key=f"chem_btn_{i}"):
                                 selected_chem = c
                     custom_chem = st.text_input("Custom \\ce{}", key="custom_chem")
                     if st.form_submit_button("Insert Custom Chemistry", key="insert_chem"):
                         selected_chem = f"\\ce{{{custom_chem}}}"
                     if selected_chem:
                         st.session_state.temp_formula = st.session_state.formula + selected_chem
-                        st.session_state.formula = st.session_state.temp_formula
                         update_latex()
                         logger.debug(f"Chemistry notation inserted: {selected_chem}")
                         st.rerun()
@@ -142,7 +138,7 @@ try:
                     selected_physics = None
                     for i, p in enumerate(physics):
                         with cols[i % 3]:
-                            if st.form_submit_button(p, key=f"physics_btn_{i}"):
+                            if st.button(p, key=f"physics_btn_{i}"):
                                 selected_physics = p
                     custom_deriv = st.text_input("Custom Derivative (e.g., f,x)", placeholder="function,variable", key="custom_deriv")
                     if st.form_submit_button("Insert Custom Derivative", key="insert_deriv"):
@@ -151,7 +147,6 @@ try:
                             selected_physics = f"\\dv{{{f}}}{{{x}}}"
                     if selected_physics:
                         st.session_state.temp_formula = st.session_state.formula + selected_physics
-                        st.session_state.formula = st.session_state.temp_formula
                         update_latex()
                         logger.debug(f"Physics notation inserted: {selected_physics}")
                         st.rerun()
