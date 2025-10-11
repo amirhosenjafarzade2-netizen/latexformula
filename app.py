@@ -1,7 +1,8 @@
 import streamlit as st
 import sympy as sp
 from sympy.parsing.sympy_parser import (
-    parse_expr, standard_transformations, implicit_multiplication_application, convert_xor
+    parse_expr, standard_transformations, implicit_multiplication_application,
+    convert_xor, auto_symbol
 )
 from functools import partial
 import base64
@@ -23,24 +24,11 @@ if "latex" not in st.session_state:
 def is_valid_formula(formula):
     if not formula.strip():
         return False, "Formula is empty."
-    if formula.strip()[-1] in ['+', '-', '*', '/', '^']:
+    if formula.strip()[-1] in ['+', '-', '*', '/', '^', '_', '=']:
         return False, "Formula ends with an incomplete operator."
     if formula.count('(') != formula.count(')'):
         return False, "Unbalanced parentheses."
     return True, ""
-
-# --- Function: Convert subscripts to SymPy format ---
-def convert_subscripts(formula):
-    """Convert x_2 notation to SymPy Symbol('x_2') format"""
-    # Match patterns like x_2, y_10, var_name, etc.
-    pattern = r'([a-zA-Z]\w*)_(\w+)'
-    
-    def replace_subscript(match):
-        base = match.group(1)
-        subscript = match.group(2)
-        return f"Symbol('{base}_{subscript}')"
-    
-    return re.sub(pattern, replace_subscript, formula)
 
 # --- Function: Update LaTeX from formula ---
 def update_latex():
@@ -57,30 +45,35 @@ def update_latex():
         return
 
     try:
-        # Convert ^ to ** and handle subscripts
-        parsed_formula = formula.replace("^", "**")
-        parsed_formula = convert_subscripts(parsed_formula)
-        
+        # --- Preprocess formula ---
+        formula = formula.replace("^", "**")  # caret → power
+        formula = formula.replace("=", "==")  # equality symbol fix
+        formula = re.sub(r'([a-zA-Z])_([0-9]+)', r'\1_\2', formula)  # allow subscripts like x_2
+
         local_dict = {
             "sp": sp,
-            "Symbol": sp.Symbol,
             "sqrt": sp.sqrt,
             "log": sp.log,
             "sin": sp.sin,
             "cos": sp.cos,
             "tan": sp.tan,
-            "exp": sp.exp
+            "exp": sp.exp,
+            "Integral": sp.Integral,
+            "Derivative": sp.Derivative,
+            "Eq": sp.Eq
         }
 
         transformations = standard_transformations + (
             implicit_multiplication_application,
-            convert_xor
+            convert_xor,
+            auto_symbol,  # allow undefined symbols like x_2, F1, etc.
         )
 
-        expr = parse_expr(parsed_formula, local_dict=local_dict, transformations=transformations)
-        latex_str = sp.latex(expr, order='none')
+        expr = parse_expr(formula, local_dict=local_dict, transformations=transformations)
 
+        latex_str = sp.latex(expr, order='none')
         st.session_state.latex = latex_str
+
     except Exception as e:
         st.session_state.latex = f"Invalid formula: {str(e)}"
         st.error(f"Invalid formula: {str(e)}")
@@ -153,7 +146,6 @@ if st.session_state.latex and not st.session_state.latex.startswith("Invalid for
         st.latex(st.session_state.latex)
         img_b64 = latex_to_image(st.session_state.latex)
 
-        # JS + HTML block
         copy_js = """
         <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/3.2.2/es5/tex-mml-chtml.min.js"></script>
         <script>
