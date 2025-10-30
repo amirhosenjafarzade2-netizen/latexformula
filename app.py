@@ -267,7 +267,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # Text input with cursor tracking
-st.text_input("Enter formula (e.g., sigma_1 = kappa * x^2)", key="formula", on_change=update_formula_and_cursor)
+st.text_input("Enter formula ", key="formula", on_change=update_formula_and_cursor)
 
 # Tabbed interface for symbol groups
 tab1, tab2, tab3, tab4 = st.tabs(["Mathematical Symbols", "Greek Characters", "Engineering Symbols", "Petroleum Engineering"])
