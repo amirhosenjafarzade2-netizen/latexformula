@@ -10,6 +10,7 @@ import matplotlib.pyplot as plt
 import matplotlib
 import streamlit.components.v1 as components
 import re
+import streamlit_ace as st_ace  # <-- Added for cursor control
 
 matplotlib.use('Agg')
 
@@ -22,6 +23,8 @@ if "cursor_pos" not in st.session_state:
     st.session_state.cursor_pos = 0
 if "latex_edited" not in st.session_state:
     st.session_state.latex_edited = False
+if "ace_key" not in st.session_state:
+    st.session_state.ace_key = 0  # For forcing Ace re-render
 
 # --- Helper: Validate formula ---
 def is_valid_formula(formula):
@@ -35,23 +38,19 @@ def is_valid_formula(formula):
 
 # --- Function: Insert text at cursor position ---
 def insert_at_cursor(text):
-    cursor_pos = st.session_state.cursor_pos
+    pos = st.session_state.cursor_pos
     formula = st.session_state.formula
-    st.session_state.formula = formula[:cursor_pos] + text + formula[cursor_pos:]
-    st.session_state.cursor_pos = cursor_pos + len(text)
+    st.session_state.formula = formula[:pos] + text + formula[pos:]
+    st.session_state.cursor_pos = pos + len(text)
+    st.session_state.ace_key += 1  # Force Ace editor to refresh
     st.session_state.latex_edited = False
     update_latex()
 
-# --- Function: Update cursor position ---
-def update_cursor_pos():
-    try:
-        st.session_state.cursor_pos = len(st.session_state.formula)
-    except:
-        st.session_state.cursor_pos = 0
-
-# --- Function: Update formula and cursor ---
-def update_formula_and_cursor():
-    update_cursor_pos()
+# --- Ace editor change callback ---
+def on_ace_change():
+    st.session_state.formula = st_ace.get_value()
+    st.session_state.cursor_pos = st_ace.get_cursor_position()[0]
+    st.session_state.latex_edited = False
     update_latex()
 
 # --- Function: Update LaTeX from formula or LaTeX input ---
@@ -207,41 +206,46 @@ def update_from_latex():
     st.session_state.latex_edited = True
     update_latex()
 
-# --- Function: Convert LaTeX to image ---
+# --- Function: Convert LaTeX to image (FIXED: tight proportional padding) ---
 def latex_to_image(latex_str):
     try:
-        fig = plt.figure(figsize=(10, 2))
-        ax = fig.add_subplot(111)
-        ax.axis('off')
-        ax.text(0.5, 0.5, f'${latex_str}$', fontsize=20, ha='center', va='center')
-        fig.canvas.draw()
-        bbox = ax.get_window_extent(fig.canvas.get_renderer())
-        bbox_inches = bbox.transformed(fig.dpi_scale_trans.inverted())
-        plt.close(fig)
+        # 1. Measure real extent
+        fig0 = plt.figure(figsize=(12, 2))
+        ax0 = fig0.add_subplot(111)
+        ax0.axis('off')
+        t = ax0.text(0.5, 0.5, f'${latex_str}$', fontsize=20, ha='center', va='center')
+        fig0.canvas.draw()
+        bbox = t.get_window_extent(fig0.canvas.get_renderer())
+        bbox = bbox.transformed(fig0.dpi_scale_trans.inverted())
+        plt.close(fig0)
 
-        width = bbox_inches.width + 0.3
-        height = bbox_inches.height + 0.2
-        fig = plt.figure(figsize=(width, height))
+        # 2. Proportional padding
+        w, h = bbox.width, bbox.height
+        pad_w = max(0.4, w * 0.15)
+        pad_h = max(0.3, h * 0.15)
+        new_w = w + 2 * pad_w
+        new_h = h + 2 * pad_h
+
+        # 3. Final tight render
+        fig = plt.figure(figsize=(new_w, new_h), dpi=300)
         fig.patch.set_facecolor('white')
         ax = fig.add_axes([0, 0, 1, 1])
         ax.axis('off')
         ax.text(0.5, 0.5, f'${latex_str}$', fontsize=20, ha='center', va='center')
 
         buf = BytesIO()
-        plt.savefig(buf, format='png', dpi=300, bbox_inches='tight', pad_inches=0.05, facecolor='white')
+        fig.savefig(buf, format='png', bbox_inches='tight', pad_inches=0, dpi=300, facecolor='white')
         plt.close(fig)
         buf.seek(0)
-
-        img_b64 = base64.b64encode(buf.read()).decode()
-        return img_b64
+        return base64.b64encode(buf.read()).decode()
     except Exception as e:
-        st.error(f"Image generation error: {str(e)}")
+        st.error(f"Image generation error: {e}")
         return None
 
 # --- UI ---
-st.title("Formula ↔ LaTeX Converter")
+st.title("Formula to LaTeX Converter")
 
-# Custom CSS for better styling
+# Custom CSS
 st.markdown("""
     <style>
     .symbol-button {
@@ -266,8 +270,20 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# Text input with cursor tracking
-st.text_input("Enter formula (e.g., sigma_1 = kappa * x^2)", key="formula", on_change=update_formula_and_cursor)
+# --- Ace Editor (replaces st.text_input) ---
+st_ace.st_ace(
+    value=st.session_state.formula,
+    placeholder="Enter formula (e.g. sigma_1 = kappa * x^2)",
+    language="text",
+    theme="chrome",
+    key=f"ace_{st.session_state.ace_key}",
+    height=80,
+    font_size=16,
+    show_gutter=False,
+    wrap=True,
+    auto_update=True,
+    on_change=on_ace_change,
+)
 
 # Tabbed interface for symbol groups
 tab1, tab2, tab3, tab4 = st.tabs(["Mathematical Symbols", "Greek Characters", "Engineering Symbols", "Petroleum Engineering"])
@@ -275,97 +291,33 @@ tab1, tab2, tab3, tab4 = st.tabs(["Mathematical Symbols", "Greek Characters", "E
 # Button groups
 button_groups = {
     "Mathematical Symbols": [
-        ("√", "sqrt()"),
-        ("÷", "/"),
-        ("×", "*"),
-        ("^", "^"),
-        ("=", "="),
-        ("∫", "Integral(1, x)"),
-        ("d/dx", "Derivative(1, x)"),
-        ("∑", "Sum(1, x)"),
-        ("lim", "Limit(1, x)"),
-        ("log", "log()"),
-        ("sin", "sin()"),
-        ("cos", "cos()"),
-        ("tan", "tan()"),
-        ("cot", "cot()"),
-        ("sec", "sec()"),
-        ("csc", "csc()"),
-        ("asin", "asin()"),
-        ("acos", "acos()"),
-        ("atan", "atan()"),
-        ("sinh", "sinh()"),
-        ("cosh", "cosh()"),
-        ("tanh", "tanh()"),
-        ("exp", "exp()"),
-        ("π", "pi"),
-        ("e", "e"),
-        ("∞", "oo"),
-        ("_", "_"),  # For manual subscript
+        ("√", "sqrt()"), ("÷", "/"), ("×", "*"), ("^", "^"), ("=", "="),
+        ("∫", "Integral(1, x)"), ("d/dx", "Derivative(1, x)"), ("∑", "Sum(1, x)"), ("lim", "Limit(1, x)"),
+        ("log", "log()"), ("sin", "sin()"), ("cos", "cos()"), ("tan", "tan()"), ("cot", "cot()"),
+        ("sec", "sec()"), ("csc", "csc()"), ("asin", "asin()"), ("acos", "acos()"), ("atan", "atan()"),
+        ("sinh", "sinh()"), ("cosh", "cosh()"), ("tanh", "tanh()"), ("exp", "exp()"),
+        ("π", "pi"), ("e", "e"), ("∞", "oo"), ("_", "_"),
     ],
     "Greek Characters": [
-        ("α", "alpha"),
-        ("β", "beta"),
-        ("γ", "gamma"),
-        ("Γ", "Gamma"),
-        ("δ", "delta"),
-        ("Δ", "Delta"),
-        ("ε", "epsilon"),
-        ("ζ", "zeta"),
-        ("η", "eta"),
-        ("θ", "theta"),
-        ("Θ", "Theta"),
-        ("ι", "iota"),
-        ("λ", "lambda"),
-        ("Λ", "Lambda"),
-        ("μ", "mu"),
-        ("ν", "nu"),
-        ("ξ", "xi"),
-        ("ρ", "rho"),
-        ("σ", "sigma"),
-        ("Σ", "Sigma"),
-        ("τ", "tau"),
-        ("φ", "phi"),
-        ("Φ", "Phi"),
-        ("ω", "omega"),
-        ("Ω", "Omega"),
+        ("α", "alpha"), ("β", "beta"), ("γ", "gamma"), ("Γ", "Gamma"), ("δ", "delta"), ("Δ", "Delta"),
+        ("ε", "epsilon"), ("ζ", "zeta"), ("η", "eta"), ("θ", "theta"), ("Θ", "Theta"), ("ι", "iota"),
+        ("λ", "lambda"), ("Λ", "Lambda"), ("μ", "mu"), ("ν", "nu"), ("ξ", "xi"), ("ρ", "rho"),
+        ("σ", "sigma"), ("Σ", "Sigma"), ("τ", "tau"), ("φ", "phi"), ("Φ", "Phi"), ("ω", "omega"), ("Ω", "Omega"),
     ],
     "Engineering Symbols": [
-        ("°", "degree"),
-        ("≈", "approx"),
-        ("≠", "ne"),
-        ("≥", "ge"),
-        ("≤", "le"),
-        ("σ", "sigma"),
-        ("τ", "tau"),
-        ("E", "E"),
-        ("μ", "mu"),
-        ("ν (Poisson's ratio)", "nu"),
-        ("G (shear modulus)", "G"),
+        ("°", "degree"), ("≈", "approx"), ("≠", "ne"), ("≥", "ge"), ("≤", "le"),
+        ("σ", "sigma"), ("τ", "tau"), ("E", "E"), ("μ", "mu"), ("ν (Poisson's ratio)", "nu"), ("G (shear modulus)", "G"),
     ],
     "Petroleum Engineering": [
-        ("φ (porosity)", "phi"),
-        ("κ (permeability)", "kappa"),
-        ("σ (tension)", "sigma"),
-        ("τ (shear stress)", "tau"),
-        ("γ̇ (shear rate)", "shear_rate"),
-        ("k (permeability)", "k"),
-        ("μ (viscosity)", "mu"),
-        ("ρ (density)", "rho"),
-        ("γ (specific gravity)", "gamma"),
-        ("P (pressure)", "P"),
-        ("q (flow rate)", "q"),
-        ("v (velocity)", "v"),
-        ("S (saturation)", "S"),
-        ("c (compressibility)", "c"),
-        ("B (FVF)", "B"),
-        ("z (deviation factor)", "z"),
-        ("R (gas-oil ratio)", "R"),
-        ("h (net pay)", "h"),
+        ("φ (porosity)", "phi"), ("κ (permeability)", "kappa"), ("σ (tension)", "sigma"), ("τ (shear stress)", "tau"),
+        ("γ̇ (shear rate)", "shear_rate"), ("k (permeability)", "k"), ("μ (viscosity)", "mu"), ("ρ (density)", "rho"),
+        ("γ (specific gravity)", "gamma"), ("P (pressure)", "P"), ("q (flow rate)", "q"), ("v (velocity)", "v"),
+        ("S (saturation)", "S"), ("c (compressibility)", "c"), ("B (FVF)", "B"), ("z (deviation factor)", "z"),
+        ("R (gas-oil ratio)", "R"), ("h (net pay)", "h"),
     ]
 }
 
-# Render buttons for each tab
+# Render buttons
 for tab, group_name in [(tab1, "Mathematical Symbols"), (tab2, "Greek Characters"), 
                         (tab3, "Engineering Symbols"), (tab4, "Petroleum Engineering")]:
     with tab:
@@ -373,10 +325,9 @@ for tab, group_name in [(tab1, "Mathematical Symbols"), (tab2, "Greek Characters
         for i, (label, text) in enumerate(button_groups[group_name]):
             with cols[i % 5]:
                 st.button(label, key=f"{group_name}_{i}", on_click=partial(insert_at_cursor, text), 
-                          args=None, kwargs=None, help=f"Insert {text}", 
-                          use_container_width=True, type="secondary")
+                          help=f"Insert {text}", use_container_width=True, type="secondary")
 
-# LaTeX input, editable
+# LaTeX input (editable)
 st.text_input("LaTeX version (edit to modify directly)", key="latex", on_change=update_from_latex)
 
 st.write("Rendered:")
@@ -386,7 +337,7 @@ if st.session_state.latex and not st.session_state.latex.startswith("Invalid"):
         st.latex(st.session_state.latex)
         img_b64 = latex_to_image(st.session_state.latex)
 
-        # JS + HTML block for clipboard functionality
+        # JS + HTML for clipboard
         copy_js = """
         <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/3.2.2/es5/tex-mml-chtml.min.js"></script>
         <script>
@@ -395,7 +346,7 @@ if st.session_state.latex and not st.session_state.latex.startswith("Invalid"):
             const latexCode = document.getElementById('latex-content').innerText;
             navigator.clipboard.writeText(latexCode).then(() => {
                 button.style.backgroundColor = '#00c853';
-                button.innerText = '✓ Copied!';
+                button.innerText = 'Copied!';
                 setTimeout(() => {
                     button.style.backgroundColor = '#0f80c1';
                     button.innerText = 'Copy LaTeX';
@@ -413,7 +364,7 @@ if st.session_state.latex and not st.session_state.latex.startswith("Invalid"):
                 const clipboardItem = new ClipboardItem({ 'text/html': blob });
                 await navigator.clipboard.write([clipboardItem]);
                 button.style.backgroundColor = '#00c853';
-                button.innerText = '✓ Copied!';
+                button.innerText = 'Copied!';
                 setTimeout(() => {
                     button.style.backgroundColor = '#0f80c1';
                     button.innerText = 'Copy for Word';
@@ -446,7 +397,7 @@ if st.session_state.latex and not st.session_state.latex.startswith("Invalid"):
                 const clipboardItem = new ClipboardItem({ 'image/png': blob });
                 await navigator.clipboard.write([clipboardItem]);
                 button.style.backgroundColor = '#00c853';
-                button.innerText = '✓ Copied!';
+                button.innerText = 'Copied!';
                 setTimeout(() => {
                     button.style.backgroundColor = '#0f80c1';
                     button.innerText = 'Copy as Image';
