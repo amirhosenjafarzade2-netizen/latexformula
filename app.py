@@ -3,7 +3,7 @@ import sympy as sp
 from sympy.parsing.sympy_parser import (
     parse_expr, standard_transformations, implicit_multiplication_application, convert_xor
 )
-from functools import partial
+from functools import partial, lru_cache
 import base64
 from io import BytesIO
 import matplotlib.pyplot as plt
@@ -12,6 +12,14 @@ import streamlit.components.v1 as components
 import re
 
 matplotlib.use('Agg')
+
+# --- Page Configuration ---
+st.set_page_config(
+    page_title="Formula ↔ LaTeX Converter",
+    page_icon="📐",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
 # --- Initialize session state ---
 if "formula" not in st.session_state:
@@ -22,6 +30,8 @@ if "cursor_pos" not in st.session_state:
     st.session_state.cursor_pos = 0
 if "latex_edited" not in st.session_state:
     st.session_state.latex_edited = False
+if "history" not in st.session_state:
+    st.session_state.history = []
 
 # --- Helper: Validate formula ---
 def is_valid_formula(formula):
@@ -37,8 +47,17 @@ def is_valid_formula(formula):
 def insert_at_cursor(text):
     cursor_pos = st.session_state.cursor_pos
     formula = st.session_state.formula
-    st.session_state.formula = formula[:cursor_pos] + text + formula[cursor_pos:]
-    st.session_state.cursor_pos = cursor_pos + len(text)
+    
+    # For functions with parentheses, place cursor inside
+    if '()' in text:
+        insert_text = text.replace('()', '(|)')
+        parts = insert_text.split('|')
+        st.session_state.formula = formula[:cursor_pos] + parts[0] + parts[1] + formula[cursor_pos:]
+        st.session_state.cursor_pos = cursor_pos + len(parts[0])
+    else:
+        st.session_state.formula = formula[:cursor_pos] + text + formula[cursor_pos:]
+        st.session_state.cursor_pos = cursor_pos + len(text)
+    
     st.session_state.latex_edited = False
     update_latex()
 
@@ -54,6 +73,20 @@ def update_formula_and_cursor():
     update_cursor_pos()
     update_latex()
 
+# --- Function: Clear formula ---
+def clear_formula():
+    st.session_state.formula = ""
+    st.session_state.latex = ""
+    st.session_state.cursor_pos = 0
+    st.session_state.latex_edited = False
+
+# --- Function: Backspace ---
+def backspace_formula():
+    if st.session_state.formula:
+        st.session_state.formula = st.session_state.formula[:-1]
+        st.session_state.cursor_pos = len(st.session_state.formula)
+        update_latex()
+
 # --- Function: Update LaTeX from formula or LaTeX input ---
 def update_latex():
     if st.session_state.latex_edited:
@@ -68,18 +101,15 @@ def update_latex():
                 return  # LaTeX is valid, keep it
             except:
                 st.session_state.latex = "Invalid LaTeX input"
-                st.error("Invalid LaTeX input")
                 return
         else:
             st.session_state.latex = "Invalid LaTeX: Must be valid LaTeX syntax"
-            st.error("Invalid LaTeX: Must be valid LaTeX syntax")
             return
 
     formula = st.session_state.formula.strip()
     valid, error_msg = is_valid_formula(formula)
     if not valid:
         st.session_state.latex = f"Invalid formula: {error_msg}"
-        st.error(error_msg)
         return
 
     # Auto-detect if formula is LaTeX
@@ -197,49 +227,60 @@ def update_latex():
         latex_str = sp.latex(expr, order='none')
         st.session_state.latex = latex_str
         st.session_state.latex_edited = False
+        
+        # Add to history
+        if latex_str and not latex_str.startswith("Invalid"):
+            if st.session_state.formula not in [h[0] for h in st.session_state.history]:
+                st.session_state.history.insert(0, (st.session_state.formula, latex_str))
+                st.session_state.history = st.session_state.history[:10]  # Keep last 10
 
     except Exception as e:
         st.session_state.latex = f"Invalid formula: {str(e)}"
-        st.error(f"Invalid formula: {str(e)}")
 
 # --- Function: Handle LaTeX input change ---
 def update_from_latex():
     st.session_state.latex_edited = True
     update_latex()
 
-# --- Function: Convert LaTeX to image ---
+# --- Function: Convert LaTeX to image (IMPROVED) ---
 def latex_to_image(latex_str):
     try:
-        fig = plt.figure(figsize=(10, 2))
-        ax = fig.add_subplot(111)
+        # Create a temporary figure to measure the text
+        fig, ax = plt.subplots(figsize=(1, 1))
         ax.axis('off')
-        ax.text(0.5, 0.5, f'${latex_str}$', fontsize=20, ha='center', va='center')
+        text = ax.text(0.5, 0.5, f'${latex_str}$', fontsize=20, ha='center', va='center')
         fig.canvas.draw()
-        bbox = ax.get_window_extent(fig.canvas.get_renderer())
-        bbox_inches = bbox.transformed(fig.dpi_scale_trans.inverted())
+        
+        # Get the bounding box in pixels
+        bbox = text.get_window_extent(renderer=fig.canvas.get_renderer())
+        
+        # Convert to inches (with padding)
+        dpi = fig.dpi
+        width_inches = (bbox.width / dpi) + 0.5  # Add padding
+        height_inches = (bbox.height / dpi) + 0.3
+        
         plt.close(fig)
-
-        width = bbox_inches.width + 0.3
-        height = bbox_inches.height + 0.2
-        fig = plt.figure(figsize=(width, height))
-        fig.patch.set_facecolor('white')
+        
+        # Create the final figure with correct size
+        fig = plt.figure(figsize=(width_inches, height_inches), facecolor='white')
         ax = fig.add_axes([0, 0, 1, 1])
         ax.axis('off')
         ax.text(0.5, 0.5, f'${latex_str}$', fontsize=20, ha='center', va='center')
-
+        
         buf = BytesIO()
-        plt.savefig(buf, format='png', dpi=300, bbox_inches='tight', pad_inches=0.05, facecolor='white')
+        plt.savefig(buf, format='png', dpi=150, bbox_inches='tight', 
+                   pad_inches=0.1, facecolor='white')
         plt.close(fig)
         buf.seek(0)
-
-        img_b64 = base64.b64encode(buf.read()).decode()
-        return img_b64
+        
+        return base64.b64encode(buf.read()).decode()
     except Exception as e:
         st.error(f"Image generation error: {str(e)}")
         return None
 
 # --- UI ---
-st.title("Formula ↔ LaTeX Converter")
+st.title("📐 Formula ↔ LaTeX Converter")
+st.markdown("Convert mathematical formulas to LaTeX and vice versa")
 
 # Custom CSS for better styling
 st.markdown("""
@@ -263,27 +304,83 @@ st.markdown("""
     .stTabs [data-baseweb="tab-highlight"] {
         background-color: #0f80c1;
     }
+    @media (max-width: 768px) {
+        .stColumns > div {
+            min-width: 100% !important;
+        }
+        .symbol-button {
+            font-size: 12px;
+            padding: 6px 8px;
+        }
+    }
     </style>
 """, unsafe_allow_html=True)
 
-# Text input with cursor tracking
-st.text_input("Enter formula ", key="formula", on_change=update_formula_and_cursor)
+# Sidebar - History and Examples
+with st.sidebar:
+    st.header("📚 Quick Examples")
+    examples = {
+        "Quadratic Formula": "x = (-b + sqrt(b^2 - 4*a*c))/(2*a)",
+        "Darcy's Law": "q = (k*A*(P1-P2))/(mu*L)",
+        "Integral": "Integral(x^2, (x, 0, 1))",
+        "Summation": "Sum(1/n^2, (n, 1, oo))",
+        "Derivative": "Derivative(sin(x)*cos(x), x)",
+        "Limit": "Limit(sin(x)/x, x, 0)",
+    }
+    
+    for name, formula in examples.items():
+        if st.button(f"📝 {name}", use_container_width=True, key=f"example_{name}"):
+            st.session_state.formula = formula
+            update_formula_and_cursor()
+            st.rerun()
+    
+    st.divider()
+    
+    if st.session_state.history:
+        st.header("🕐 Recent Formulas")
+        for i, (formula, latex) in enumerate(st.session_state.history):
+            display_text = formula if len(formula) <= 30 else formula[:27] + "..."
+            if st.button(f"{i+1}. {display_text}", key=f"history_{i}", use_container_width=True):
+                st.session_state.formula = formula
+                update_formula_and_cursor()
+                st.rerun()
+        
+        if st.button("🗑️ Clear History", use_container_width=True):
+            st.session_state.history = []
+            st.rerun()
+
+# Main input area
+col1, col2, col3 = st.columns([6, 1, 1])
+with col1:
+    st.text_input("Enter formula", key="formula", on_change=update_formula_and_cursor, 
+                  placeholder="e.g., x^2 + 2*x + 1 or sqrt(a^2 + b^2)")
+with col2:
+    st.button("⌫ Clear", key="clear_btn", on_click=clear_formula, use_container_width=True, type="secondary")
+with col3:
+    st.button("← Back", key="back_btn", on_click=backspace_formula, use_container_width=True, type="secondary")
+
+# Status indicator
+if st.session_state.latex:
+    if st.session_state.latex.startswith("Invalid"):
+        st.error(f"❌ {st.session_state.latex}")
+    else:
+        st.success("✓ Valid formula")
 
 # Tabbed interface for symbol groups
-tab1, tab2, tab3, tab4 = st.tabs(["Mathematical Symbols", "Greek Characters", "Engineering Symbols", "Petroleum Engineering"])
+tab1, tab2, tab3, tab4 = st.tabs(["🔢 Mathematical", "🔤 Greek", "⚙️ Engineering", "🛢️ Petroleum"])
 
 # Button groups
 button_groups = {
-    "Mathematical Symbols": [
+    "Mathematical": [
         ("√", "sqrt()"),
         ("÷", "/"),
         ("×", "*"),
         ("^", "^"),
         ("=", "="),
-        ("∫", "Integral(1, x)"),
-        ("d/dx", "Derivative(1, x)"),
-        ("∑", "Sum(1, x)"),
-        ("lim", "Limit(1, x)"),
+        ("∫", "Integral(, x)"),
+        ("d/dx", "Derivative(, x)"),
+        ("∑", "Sum(, (n, 1, oo))"),
+        ("lim", "Limit(, x, 0)"),
         ("log", "log()"),
         ("sin", "sin()"),
         ("cos", "cos()"),
@@ -301,9 +398,11 @@ button_groups = {
         ("π", "pi"),
         ("e", "e"),
         ("∞", "oo"),
-        ("_", "_"),  # For manual subscript
+        ("_", "_"),
+        ("(", "("),
+        (")", ")"),
     ],
-    "Greek Characters": [
+    "Greek": [
         ("α", "alpha"),
         ("β", "beta"),
         ("γ", "gamma"),
@@ -330,7 +429,7 @@ button_groups = {
         ("ω", "omega"),
         ("Ω", "Omega"),
     ],
-    "Engineering Symbols": [
+    "Engineering": [
         ("°", "degree"),
         ("≈", "approx"),
         ("≠", "ne"),
@@ -340,51 +439,75 @@ button_groups = {
         ("τ", "tau"),
         ("E", "E"),
         ("μ", "mu"),
-        ("ν (Poisson's ratio)", "nu"),
-        ("G (shear modulus)", "G"),
+        ("ν", "nu"),
+        ("G", "G"),
     ],
-    "Petroleum Engineering": [
+    "Petroleum": [
         ("φ (porosity)", "phi"),
         ("κ (permeability)", "kappa"),
         ("σ (tension)", "sigma"),
         ("τ (shear stress)", "tau"),
         ("γ̇ (shear rate)", "shear_rate"),
-        ("k (permeability)", "k"),
+        ("k", "k"),
         ("μ (viscosity)", "mu"),
         ("ρ (density)", "rho"),
-        ("γ (specific gravity)", "gamma"),
+        ("γ", "gamma"),
         ("P (pressure)", "P"),
         ("q (flow rate)", "q"),
         ("v (velocity)", "v"),
         ("S (saturation)", "S"),
         ("c (compressibility)", "c"),
         ("B (FVF)", "B"),
-        ("z (deviation factor)", "z"),
-        ("R (gas-oil ratio)", "R"),
+        ("z (deviation)", "z"),
+        ("R (GOR)", "R"),
         ("h (net pay)", "h"),
     ]
 }
 
 # Render buttons for each tab
-for tab, group_name in [(tab1, "Mathematical Symbols"), (tab2, "Greek Characters"), 
-                        (tab3, "Engineering Symbols"), (tab4, "Petroleum Engineering")]:
+tab_mapping = {tab1: "Mathematical", tab2: "Greek", tab3: "Engineering", tab4: "Petroleum"}
+
+for tab, group_name in tab_mapping.items():
     with tab:
-        cols = st.columns(5)
+        cols = st.columns(6)
         for i, (label, text) in enumerate(button_groups[group_name]):
-            with cols[i % 5]:
+            with cols[i % 6]:
                 st.button(label, key=f"{group_name}_{i}", on_click=partial(insert_at_cursor, text), 
-                          args=None, kwargs=None, help=f"Insert {text}", 
-                          use_container_width=True, type="secondary")
+                          help=f"Insert {text}", use_container_width=True, type="secondary")
+
+st.divider()
 
 # LaTeX input, editable
-st.text_input("LaTeX version (edit to modify directly)", key="latex", on_change=update_from_latex)
+st.text_input("LaTeX version (edit to modify directly)", key="latex", on_change=update_from_latex,
+              placeholder="LaTeX code will appear here")
 
-st.write("Rendered:")
+st.write("### Rendered Output:")
 
 if st.session_state.latex and not st.session_state.latex.startswith("Invalid"):
     try:
         st.latex(st.session_state.latex)
         img_b64 = latex_to_image(st.session_state.latex)
+
+        # Download buttons
+        col1, col2 = st.columns(2)
+        with col1:
+            st.download_button(
+                label="📥 Download LaTeX (.tex)",
+                data=st.session_state.latex,
+                file_name="formula.tex",
+                mime="text/plain",
+                use_container_width=True
+            )
+        with col2:
+            if img_b64:
+                png_data = base64.b64decode(img_b64)
+                st.download_button(
+                    label="📥 Download Image (.png)",
+                    data=png_data,
+                    file_name="formula.png",
+                    mime="image/png",
+                    use_container_width=True
+                )
 
         # JS + HTML block for clipboard functionality
         copy_js = """
@@ -465,42 +588,58 @@ if st.session_state.latex and not st.session_state.latex.startswith("Invalid"):
 
         html_content = f"""
         {copy_js}
-        <div style="max-height:500px; overflow-y:auto;">
+        <div style="max-height:600px; overflow-y:auto; border: 1px solid #e0e0e0; padding: 20px; border-radius: 8px; background-color: #fafafa;">
             <div id="latex-content" style="display:none;">{st.session_state.latex}</div>
         """
 
         if img_b64:
             html_content += f"""
-            <img id="latex-image" src="data:image/png;base64,{img_b64}" 
-                 style="max-width: 100%; margin-top: 10px;" />
+            <div style="text-align: center; background-color: white; padding: 20px; border-radius: 4px;">
+                <img id="latex-image" src="data:image/png;base64,{img_b64}" 
+                     style="max-width: 100%; height: auto;" />
+            </div>
             """
         else:
             html_content += "<p style='color:red;'>No image available.</p>"
 
         html_content += """
-            <div style="display:flex; gap:10px; margin-top:10px;">
+            <div style="display:flex; gap:10px; margin-top:20px; justify-content: center;">
                 <button id="copy-latex-btn" onclick="copyLatexText()" 
-                        style="background-color:#0f80c1;color:white;padding:10px 20px;
-                               border:none;border-radius:4px;cursor:pointer;font-weight:bold;">
-                    Copy LaTeX
+                        style="background-color:#0f80c1;color:white;padding:12px 24px;
+                               border:none;border-radius:6px;cursor:pointer;font-weight:bold;
+                               font-size:14px;transition:all 0.3s;">
+                    📋 Copy LaTeX
                 </button>
                 <button id="copy-word-btn" onclick="copyForWord()" 
-                        style="background-color:#0f80c1;color:white;padding:10px 20px;
-                               border:none;border-radius:4px;cursor:pointer;font-weight:bold;">
-                    Copy for Word
+                        style="background-color:#0f80c1;color:white;padding:12px 24px;
+                               border:none;border-radius:6px;cursor:pointer;font-weight:bold;
+                               font-size:14px;transition:all 0.3s;">
+                    📄 Copy for Word
                 </button>
                 <button id="copy-image-btn" onclick="copyAsImage()" 
-                        style="background-color:#0f80c1;color:white;padding:10px 20px;
-                               border:none;border-radius:4px;cursor:pointer;font-weight:bold;">
-                    Copy as Image
+                        style="background-color:#0f80c1;color:white;padding:12px 24px;
+                               border:none;border-radius:6px;cursor:pointer;font-weight:bold;
+                               font-size:14px;transition:all 0.3s;">
+                    🖼️ Copy as Image
                 </button>
             </div>
         </div>
         """
 
-        dynamic_height = 400 + min(len(st.session_state.latex) // 10, 600)
+        # Better dynamic height calculation
+        latex_length = len(st.session_state.latex)
+        dynamic_height = max(400, min(700, 400 + (latex_length // 20) * 10))
         components.html(html_content, height=dynamic_height)
+        
     except Exception as e:
         st.error(f"Unable to render LaTeX: {str(e)}")
 else:
-    st.write("Enter a valid formula or LaTeX to see the rendering.")
+    st.info("👆 Enter a valid formula or LaTeX code above to see the rendering.")
+
+# Footer
+st.divider()
+st.markdown("""
+    <div style='text-align: center; color: #666; font-size: 12px;'>
+        <p>💡 Tip: Click symbol buttons to insert them at the cursor position | Use examples in the sidebar to get started</p>
+    </div>
+""", unsafe_allow_html=True)
